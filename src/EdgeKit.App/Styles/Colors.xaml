@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+        EdgeKit 调色板。
+        抽屉窗口使用 DesktopAcrylicBackdrop（毛玻璃），因此覆盖层与面板均带透明度，
+        让背景内容透出，营造层次感。亮/暗主题分别定义。
+    -->
+    <ResourceDictionary.ThemeDictionaries>
+
+        <!-- 暗色主题 -->
+        <ResourceDictionary x:Key="Default">
+            <!-- 主强调色 -->
+            <Color x:Key="EdgeAccentColor">#4C8DFF</Color>
+            <SolidColorBrush x:Key="EdgeAccentBrush" Color="{StaticResource EdgeAccentColor}" />
+            <SolidColorBrush x:Key="EdgeAccentSoftBrush" Color="#334C8DFF" />
+
+            <!-- 抽屉整体覆盖层：薄暗层压在毛玻璃上，提升可读性 -->
+            <SolidColorBrush x:Key="EdgeDrawerOverlayBrush" Color="#26000000" />
+
+            <!-- 面板 / 卡片 -->
+            <SolidColorBrush x:Key="EdgePanelBrush" Color="#1FFFFFFF" />
+            <!-- 控件（搜索框等）底色 -->
+            <SolidColorBrush x:Key="EdgeControlBrush" Color="#14FFFFFF" />
+            <!-- 分隔线 / 边框 -->
+            <SolidColorBrush x:Key="EdgeLineBrush" Color="#22FFFFFF" />
+
+            <!-- 文本 -->
+            <SolidColorBrush x:Key="EdgeTextBrush" Color="#F2FFFFFF" />
+            <SolidColorBrush x:Key="EdgeMutedBrush" Color="#99FFFFFF" />
+        </ResourceDictionary>
+
+        <!-- 亮色主题 -->
+        <ResourceDictionary x:Key="Light">
+            <Color x:Key="EdgeAccentColor">#2563EB</Color>
+            <SolidColorBrush x:Key="EdgeAccentBrush" Color="{StaticResource EdgeAccentColor}" />
+            <SolidColorBrush x:Key="EdgeAccentSoftBrush" Color="#1F2563EB" />
+
+            <SolidColorBrush x:Key="EdgeDrawerOverlayBrush" Color="#1AFFFFFF" />
+
+            <SolidColorBrush x:Key="EdgePanelBrush" Color="#80FFFFFF" />
+            <SolidColorBrush x:Key="EdgeControlBrush" Color="#66FFFFFF" />
+            <SolidColorBrush x:Key="EdgeLineBrush" Color="#1A000000" />
+
+            <SolidColorBrush x:Key="EdgeTextBrush" Color="#E6000000" />
+            <SolidColorBrush x:Key="EdgeMutedBrush" Color="#99000000" />
+        </ResourceDictionary>
+
+        <!-- 高对比度 -->
+        <ResourceDictionary x:Key="HighContrast">
+            <SolidColorBrush x:Key="EdgeAccentBrush" Color="{ThemeResource SystemColorHotlightColor}" />
+            <SolidColorBrush x:Key="EdgeAccentSoftBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+
+            <SolidColorBrush x:Key="EdgeDrawerOverlayBrush" Color="{ThemeResource SystemColorWindowColor}" />
+
+            <SolidColorBrush x:Key="EdgePanelBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="EdgeControlBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="EdgeLineBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+
+            <SolidColorBrush x:Key="EdgeTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="EdgeMutedBrush" Color="{ThemeResource SystemColorGrayTextColor}" />
+        </ResourceDictionary>
+
+    </ResourceDictionary.ThemeDictionaries>
+</ResourceDictionary>

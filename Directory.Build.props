@@ -1,0 +1,28 @@
+<Project>
+  <!--
+    解决方案级通用属性。所有项目自动继承。
+    统一版本号、语言版本、分析器等。
+  -->
+  <PropertyGroup>
+    <!-- 版本号统一管理 -->
+    <Version>1.0.0</Version>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+
+    <!-- 产品信息 -->
+    <Product>EdgeKit</Product>
+    <Company>EdgeKit</Company>
+    <Authors>EdgeKit</Authors>
+
+    <!-- 语言与质量 -->
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+
+    <!-- 确定性构建 -->
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+</Project>

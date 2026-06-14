@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' blob: data:; script-src 'self' 'unsafe-inline' blob: data:; style-src 'self' 'unsafe-inline'; worker-src 'self' blob: data:;">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    html, body, #editor {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: transparent;
+    }
+  </style>
+</head>
+<body>
+  <div id="editor"></div>
+  <script src="../Monaco/vs/loader.js"></script>
+  <script>
+    const monacoBase = '../Monaco/vs';
+    require.config({ paths: { vs: monacoBase } });
+    window.MonacoEnvironment = {
+      getWorkerUrl: function () {
+        return monacoBase + '/base/worker/workerMain.js';
+      }
+    };
+
+    require(['vs/editor/editor.main'], function () {
+      monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
+        validate: true,
+        allowComments: false,
+        schemas: [],
+        enableSchemaRequest: false
+      });
+
+      monaco.editor.defineTheme('edgekit-dark', {
+        base: 'vs-dark',
+        inherit: true,
+        rules: [
+          { token: 'string.key.json', foreground: '8bd5ff' },
+          { token: 'string.value.json', foreground: 'b8e986' },
+          { token: 'number', foreground: 'f7c873' },
+          { token: 'keyword', foreground: 'ff9f9f' }
+        ],
+        colors: {
+          'editor.background': '#15181D33',
+          'editor.foreground': '#e8edf2',
+          'editorLineNumber.foreground': '#7f8c99',
+          'editorLineNumber.activeForeground': '#e8edf2',
+          'editorCursor.foreground': '#78b7ff',
+          'editor.selectionBackground': '#315a7d',
+          'editor.inactiveSelectionBackground': '#243748',
+          'editorGutter.background': '#15181d',
+          'editorLineNumber.dimmedForeground': '#4d5965'
+        }
+      });
+
+      const editor = monaco.editor.create(document.getElementById('editor'), {
+        value: '',
+        language: 'json',
+        theme: 'edgekit-dark',
+        automaticLayout: true,
+        minimap: { enabled: false },
+        lineNumbers: 'on',
+        glyphMargin: true,
+        folding: true,
+        wordWrap: 'on',
+        tabSize: 2,
+        insertSpaces: true,
+        scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
+        padding: { top: 14, bottom: 14 },
+        smoothScrolling: true,
+        contextmenu: true,
+        quickSuggestions: true,
+        formatOnPaste: true,
+        formatOnType: true
+      });
+
+      function post(type, payload) {
+        if (window.chrome && window.chrome.webview) {
+          window.chrome.webview.postMessage(Object.assign({ type }, payload || {}));
+        }
+      }
+
+      // Receive/return large text via PostWebMessage to avoid ExecuteScript marshaling.
+      if (window.chrome && window.chrome.webview) {
+        window.chrome.webview.addEventListener('message', function (event) {
+          const data = event.data || {};
+          switch (data.type) {
+            case 'setText':
+              editor.setValue(data.value || '');
+              editor.focus();
+              break;
+            case 'requestText':
+              post('text', { value: editor.getValue() });
+              break;
+            case 'focus':
+              editor.focus();
+              break;
+            default:
+              break;
+          }
+        });
+      }
+
+      function tryAutoFormat() {
+        const value = editor.getValue();
+        if (!value.trim()) {
+          return;
+        }
+
+        try {
+          JSON.parse(value);
+          editor.getAction('editor.action.formatDocument').run();
+        } catch (_) {
+          // Diagnostics will mark the error; keep the pasted content unchanged.
+        }
+      }
+
+      editor.addAction({
+        id: 'edgekit-find',
+        label: 'Find',
+        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyF],
+        run: function () {
+          editor.trigger('edgekit', 'actions.find', null);
+        }
+      });
+
+      editor.addAction({
+        id: 'edgekit-replace',
+        label: 'Replace',
+        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyR],
+        run: function () {
+          editor.trigger('edgekit', 'editor.action.startFindReplaceAction', null);
+        }
+      });
+
+      editor.onDidPaste(function () {
+        setTimeout(tryAutoFormat, 30);
+      });
+
+      let contentChangedTimer = 0;
+      editor.onDidChangeModelContent(function () {
+        window.clearTimeout(contentChangedTimer);
+        contentChangedTimer = window.setTimeout(function () {
+          post('contentChanged', {
+            length: editor.getValueLength(),
+            value: editor.getValue()
+          });
+        }, 200);
+      });
+
+      window.edgekitEditor = {
+        setValue: function (value) {
+          editor.setValue(value || '');
+          editor.focus();
+        },
+        getValue: function () {
+          return editor.getValue();
+        },
+        focus: function () {
+          editor.focus();
+        },
+        format: function () {
+          return editor.getAction('editor.action.formatDocument').run();
+        },
+        openFind: function () {
+          editor.trigger('edgekit', 'actions.find', null);
+        },
+        openReplace: function () {
+          editor.trigger('edgekit', 'editor.action.startFindReplaceAction', null);
+        }
+      };
+
+      post('ready');
+      editor.focus();
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/EdgeKit.App/EdgeKit.App.csproj" />
+    <Project Path="src/EdgeKit.Core/EdgeKit.Core.csproj" />
+    <Project Path="src/EdgeKit.Data/EdgeKit.Data.csproj" />
+    <Project Path="src/EdgeKit.Native/EdgeKit.Native.csproj" />
+    <Project Path="src/EdgeKit.Services/EdgeKit.Services.csproj" />
+  </Folder>
+</Solution>

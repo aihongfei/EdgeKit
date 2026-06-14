@@ -1,0 +1,275 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Window
+    x:Class="EdgeKit.App.Windows.DrawerWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="using:EdgeKit.App.Windows"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    Title="EdgeKit"
+    mc:Ignorable="d">
+
+    <!--
+        毛玻璃由代码端 DesktopAcrylicController 手动接管（见 .cs），
+        强制常驻激活，避免失焦时退化为纯色。此处不再用 XAML SystemBackdrop。
+    -->
+    <Grid x:Name="RootGrid"
+          RequestedTheme="Dark"
+          Background="{ThemeResource EdgeDrawerOverlayBrush}"
+          IsTabStop="True"
+          KeyboardAcceleratorPlacementMode="Hidden">
+        <Grid.KeyboardAccelerators>
+            <KeyboardAccelerator Modifiers="Control" Key="K" Invoked="OnSearchAcceleratorInvoked" />
+            <KeyboardAccelerator Key="Escape" Invoked="OnHideAcceleratorInvoked" />
+        </Grid.KeyboardAccelerators>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- 自定义标题栏（拖拽区） -->
+        <Grid x:Name="AppTitleBar" Grid.Row="0" Height="48" Padding="16,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <!-- 左上角品牌标识：字标图片（自带品牌图标 + EdgeKit 文字） -->
+            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <Image Width="132" Height="32"
+                       Source="ms-appx:///Assets/Generated/edgekit-brand-wordmark.png"
+                       Stretch="Uniform"
+                       VerticalAlignment="Center" />
+            </StackPanel>
+
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+                <Button x:Name="PinButton" Width="36" Height="32"
+                        Background="Transparent" BorderThickness="0"
+                        Content="&#xE718;" FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                        Click="OnPinClick" ToolTipService.ToolTip="固定" />
+            </StackPanel>
+        </Grid>
+
+        <!-- 搜索框：整框聚焦，图标与快捷键提示内置；下方弹出结果列表 -->
+        <Grid Grid.Row="1" Margin="16,4,24,12">
+            <Border x:Name="SearchBox" Height="44" CornerRadius="10"
+                    Background="{ThemeResource EdgeControlBrush}"
+                    BorderBrush="{ThemeResource EdgeLineBrush}" BorderThickness="1"
+                    PointerPressed="OnSearchBoxPointerPressed">
+                <Grid Padding="14,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Button x:Name="EverythingSearchToggle" Grid.Column="0"
+                            Width="32" Height="32"
+                            Background="Transparent" BorderThickness="0"
+                            Padding="0"
+                            MinWidth="0" MinHeight="0"
+                            Click="OnEverythingSearchToggled"
+                            ToolTipService.ToolTip="Everything 搜索">
+                        <Grid>
+                            <Border x:Name="EverythingSearchChrome"
+                                    Width="28" Height="28" CornerRadius="8"
+                                    Background="Transparent"
+                                    BorderBrush="Transparent"
+                                    BorderThickness="0" />
+                            <FontIcon x:Name="EverythingSearchBadge"
+                                      Glyph="&#xE721;"
+                                      FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                      FontSize="14"
+                                      Foreground="{ThemeResource EdgeMutedBrush}"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Center" />
+                            <ProgressRing x:Name="EverythingSearchRing"
+                                          Width="16" Height="16"
+                                          IsActive="False"
+                                          Visibility="Collapsed"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center" />
+                        </Grid>
+                    </Button>
+                    <TextBox x:Name="SearchInput" Grid.Column="1" PlaceholderText="搜索应用或工具" BorderThickness="0"
+                             Background="Transparent" VerticalAlignment="Center"
+                             MaxLength="2048"
+                             TextChanged="OnSearchTextChanged"
+                             GotFocus="OnSearchGotFocus"
+                             LostFocus="OnSearchLostFocus"
+                             KeyDown="OnSearchKeyDown">
+                        <!-- 去掉 TextBox 自身的底色/焦点描边，焦点高亮只由外层 SearchBox 边框体现 -->
+                        <TextBox.Resources>
+                            <SolidColorBrush x:Key="TextControlBackground" Color="Transparent" />
+                            <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="Transparent" />
+                            <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="Transparent" />
+                            <SolidColorBrush x:Key="TextControlBorderBrush" Color="Transparent" />
+                            <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="Transparent" />
+                            <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="Transparent" />
+                            <Thickness x:Key="TextControlBorderThemeThicknessFocused">0</Thickness>
+                        </TextBox.Resources>
+                    </TextBox>
+                    <Border Grid.Column="2" CornerRadius="6" Padding="8,2" VerticalAlignment="Center"
+                            Background="{ThemeResource EdgeControlBrush}">
+                        <TextBlock x:Name="HotkeyHintText" Text="Ctrl K" FontSize="12" Foreground="{ThemeResource EdgeMutedBrush}" />
+                    </Border>
+                </Grid>
+            </Border>
+
+            <!-- 结果下拉：贴在搜索框下方，宽度对齐搜索框 -->
+            <Popup x:Name="SearchPopup" IsLightDismissEnabled="False"
+                   HorizontalOffset="0" VerticalOffset="48">
+                <Border x:Name="SearchPopupRoot" CornerRadius="10" Padding="6"
+                        BorderBrush="{ThemeResource EdgeLineBrush}" BorderThickness="1">
+                    <!-- 结果列表毛玻璃背景：用 AcrylicBrush 做磨砂层，足够的 TintOpacity 保证文字可读 -->
+                    <Border.Background>
+                        <AcrylicBrush TintColor="#1A1A1A" TintOpacity="0.75" TintLuminosityOpacity="0.85"
+                                      FallbackColor="#E61A1A1A" />
+                    </Border.Background>
+                    <ListView x:Name="SearchResults" MaxHeight="360"
+                              SelectionMode="Single"
+                              IsItemClickEnabled="True"
+                              ItemClick="OnSearchResultClick">
+                        <ListView.ItemContainerStyle>
+                            <Style TargetType="ListViewItem">
+                                <Setter Property="Padding" Value="8,6" />
+                                <Setter Property="MinHeight" Value="0" />
+                                <Setter Property="CornerRadius" Value="8" />
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            </Style>
+                        </ListView.ItemContainerStyle>
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <Grid ColumnSpacing="10"
+                                      HorizontalAlignment="Stretch"
+                                      Background="Transparent"
+                                      RightTapped="OnSearchResultRightTapped">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <!-- 图标区：40x40 圆角磨砂方块，参考首页"最近活动窗口"样式 -->
+                                    <Border Grid.Column="0" Width="40" Height="40" CornerRadius="10"
+                                            Background="{ThemeResource EdgeControlBrush}"
+                                            BorderBrush="{ThemeResource EdgeLineBrush}" BorderThickness="1"
+                                            VerticalAlignment="Center">
+                                        <Grid>
+                                            <Image Source="{Binding IconImage}" Visibility="{Binding IconVisibility}"
+                                                   Width="28" Height="28" />
+                                            <FontIcon Glyph="{Binding Glyph}" FontSize="18"
+                                                      Foreground="{ThemeResource EdgeAccentBrush}"
+                                                      Visibility="{Binding GlyphVisibility}" />
+                                        </Grid>
+                                    </Border>
+
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+                                        <TextBlock Text="{Binding Title}" FontSize="14"
+                                                   Foreground="{ThemeResource EdgeTextBrush}"
+                                                   TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{Binding SubTitle}" FontSize="11"
+                                                   Foreground="{ThemeResource EdgeMutedBrush}"
+                                                   TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+
+                                    <Border Grid.Column="2" CornerRadius="5" Padding="6,1" VerticalAlignment="Center"
+                                            Background="{ThemeResource EdgeControlBrush}">
+                                        <TextBlock Text="{Binding KindLabel}" FontSize="11"
+                                                   Foreground="{ThemeResource EdgeMutedBrush}" />
+                                    </Border>
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                </Border>
+            </Popup>
+        </Grid>
+
+        <!-- 侧边菜单 + 内容区 -->
+        <NavigationView x:Name="ToolNav" Grid.Row="2"
+                        PaneDisplayMode="Left"
+                        IsBackButtonVisible="Collapsed"
+                        IsSettingsVisible="False"
+                        IsPaneToggleButtonVisible="True"
+                        OpenPaneLength="200"
+                        CompactPaneLength="48"
+                        CompactModeThresholdWidth="0"
+                        ExpandedModeThresholdWidth="100000"
+                        IsPaneOpen="False"
+                        PaneOpening="OnPaneOpening"
+                        PaneClosing="OnPaneClosing"
+                        SelectionChanged="OnToolSelectionChanged">
+            <NavigationView.Resources>
+                <!-- 让 Pane 透明，毛玻璃透出，贴合深色风格 -->
+                <SolidColorBrush x:Key="NavigationViewDefaultPaneBackground" Color="Transparent" />
+                <SolidColorBrush x:Key="NavigationViewExpandedPaneBackground" Color="Transparent" />
+                <SolidColorBrush x:Key="NavigationViewTopPaneBackground" Color="Transparent" />
+                <SolidColorBrush x:Key="NavigationViewContentBackground" Color="Transparent" />
+                <SolidColorBrush x:Key="NavigationViewContentGridBorderBrush" Color="Transparent" />
+
+                <!-- 选中态使用强调色软背景 + 强调色选中指示条 -->
+                <StaticResource x:Key="NavigationViewItemBackgroundSelected" ResourceKey="EdgeAccentSoftBrush" />
+                <StaticResource x:Key="NavigationViewItemBackgroundSelectedPointerOver" ResourceKey="EdgeAccentSoftBrush" />
+                <StaticResource x:Key="NavigationViewItemBackgroundSelectedPressed" ResourceKey="EdgeAccentSoftBrush" />
+                <StaticResource x:Key="NavigationViewSelectionIndicatorForeground" ResourceKey="EdgeAccentBrush" />
+                <!-- 选中指示条做成垂直居中的短竖条，避免占满整行高度显得突兀 -->
+                <x:Double x:Key="NavigationViewSelectionIndicatorHeight">16</x:Double>
+
+                <!-- 默认 / 悬停 / 按下背景：悬停用柔和控件色，与选中态分层 -->
+                <SolidColorBrush x:Key="NavigationViewItemBackground" Color="Transparent" />
+                <StaticResource x:Key="NavigationViewItemBackgroundPointerOver" ResourceKey="EdgeControlBrush" />
+                <StaticResource x:Key="NavigationViewItemBackgroundPressed" ResourceKey="EdgeControlBrush" />
+
+                <!-- 文字 / 图标前景：默认与标题栏一致，选中用强调色 -->
+                <StaticResource x:Key="NavigationViewItemForeground" ResourceKey="EdgeTextBrush" />
+                <StaticResource x:Key="NavigationViewItemForegroundPointerOver" ResourceKey="EdgeTextBrush" />
+                <StaticResource x:Key="NavigationViewItemForegroundPressed" ResourceKey="EdgeTextBrush" />
+                <StaticResource x:Key="NavigationViewItemForegroundSelected" ResourceKey="EdgeAccentBrush" />
+                <StaticResource x:Key="NavigationViewItemForegroundSelectedPointerOver" ResourceKey="EdgeAccentBrush" />
+                <StaticResource x:Key="NavigationViewItemForegroundSelectedPressed" ResourceKey="EdgeAccentBrush" />
+
+                <!-- 条目统一圆角与紧凑高度，留出呼吸间距 -->
+                <CornerRadius x:Key="NavigationViewItemButtonCornerRadius">8</CornerRadius>
+                <Thickness x:Key="NavigationViewItemInnerHeaderMargin">12,0,0,0</Thickness>
+                <x:Double x:Key="NavigationViewItemOnLeftMinHeight">38</x:Double>
+            </NavigationView.Resources>
+            <Frame x:Name="ContentFrame" />
+        </NavigationView>
+
+        <!-- 右边缘拖拽调宽手柄（覆盖全部行，贴右侧）；悬停时高亮边缘并显示左右箭头光标 -->
+        <Thumb x:Name="ResizeThumb"
+               Grid.RowSpan="3"
+               Width="8"
+               HorizontalAlignment="Right"
+               Background="Transparent"
+               ManipulationMode="TranslateX"
+               PointerEntered="OnResizeThumbPointerEntered"
+               PointerExited="OnResizeThumbPointerExited"
+               DragStarted="OnResizeThumbDragStarted"
+               DragDelta="OnResizeThumbDragDelta"
+               DragCompleted="OnResizeThumbDragCompleted">
+            <Thumb.Template>
+                <ControlTemplate TargetType="Thumb">
+                    <Border x:Name="RootBorder"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="Transparent"
+                            BorderThickness="2,0,0,0"
+                            CornerRadius="2">
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal" />
+                                <VisualState x:Name="PointerOver">
+                                    <VisualState.Setters>
+                                        <Setter Target="RootBorder.BorderBrush" Value="{ThemeResource EdgeAccentBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                    </Border>
+                </ControlTemplate>
+            </Thumb.Template>
+        </Thumb>
+    </Grid>
+</Window>

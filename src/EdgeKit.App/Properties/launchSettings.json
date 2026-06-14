@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "EdgeKit.App (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "EdgeKit.App (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}
