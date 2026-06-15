@@ -99,6 +99,7 @@ public sealed record AgentMessage(
     string Content,
     int Sequence,
     AgentMessageStatus Status,
+    string ActivityText,
     string Error,
     DateTime CreatedUtc);
 

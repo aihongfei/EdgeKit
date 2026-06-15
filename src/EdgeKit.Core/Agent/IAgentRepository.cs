@@ -27,7 +27,9 @@ public interface IAgentRepository
         AgentMessageStatus status = AgentMessageStatus.Complete,
         string error = "");
 
-    void UpdateMessage(long messageId, string content, AgentMessageStatus status, string error = "");
+    void UpdateMessage(long messageId, string content, AgentMessageStatus status, string error = "", string activityText = "");
+
+    void UpdateMessageActivity(long messageId, AgentMessageStatus status, string activityText, string error = "");
 
     AgentToolCall AddToolCall(
         long conversationId,

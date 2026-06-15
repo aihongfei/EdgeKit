@@ -117,6 +117,34 @@
                                                LineHeight="20"
                                                IsTextSelectionEnabled="True"
                                                Foreground="{ThemeResource EdgeTextBrush}" />
+
+                                    <Border Visibility="{Binding ActivityVisibility}"
+                                            Background="{ThemeResource EdgeControlBrush}"
+                                            BorderBrush="{ThemeResource EdgeLineBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="8"
+                                            Padding="8,6">
+                                        <Grid ColumnSpacing="8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <ProgressRing Width="14"
+                                                          Height="14"
+                                                          IsActive="True"
+                                                          Visibility="{Binding ActivityProgressVisibility}" />
+                                            <FontIcon Glyph="&#xE73E;"
+                                                      FontSize="12"
+                                                      Visibility="{Binding ActivityIconVisibility}"
+                                                      Foreground="{ThemeResource EdgeMutedBrush}" />
+                                            <TextBlock Grid.Column="1"
+                                                       Text="{Binding ActivityText}"
+                                                       FontSize="12"
+                                                       VerticalAlignment="Center"
+                                                       TextWrapping="Wrap"
+                                                       Foreground="{ThemeResource EdgeMutedBrush}" />
+                                        </Grid>
+                                    </Border>
                                 </StackPanel>
                             </Border>
 

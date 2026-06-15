@@ -217,7 +217,7 @@ public sealed class AgentService : IAgentService
         var userMessage = _repository.AddMessage(conversationId, AgentMessageRole.User, message.Trim());
         await _agentRunLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         _activeConversationId = conversationId;
-        var assistantMessage = _repository.AddMessage(conversationId, AgentMessageRole.Assistant, "正在思考...", AgentMessageStatus.Pending);
+        var assistantMessage = _repository.AddMessage(conversationId, AgentMessageRole.Assistant, string.Empty, AgentMessageStatus.Pending);
         _activeAssistantMessageId = assistantMessage.Id;
         _toolCallsThisTurn = 0;
         _pendingApprovalCall = null;
@@ -234,7 +234,7 @@ public sealed class AgentService : IAgentService
                 cancellationToken).ConfigureAwait(false);
             if (_pendingApprovalCall is not null)
             {
-                assistantMessage = MarkAssistantWaitingForToolApproval(assistantMessage);
+                assistantMessage = MarkAssistantWaitingForToolApproval(assistantMessage, response.Text);
                 return new AgentSendResult(true, userMessage, assistantMessage, GetToolCalls(conversationId), string.Empty);
             }
 
@@ -246,6 +246,7 @@ public sealed class AgentService : IAgentService
             {
                 Content = assistantText,
                 Status = AgentMessageStatus.Complete,
+                ActivityText = string.Empty,
                 Error = string.Empty
             };
             await SaveSessionAsync(agent, session, conversationId, cancellationToken).ConfigureAwait(false);
@@ -264,6 +265,7 @@ public sealed class AgentService : IAgentService
             {
                 Content = string.Empty,
                 Status = AgentMessageStatus.Failed,
+                ActivityText = string.Empty,
                 Error = ex.Message
             };
             return new AgentSendResult(false, userMessage, failed, GetToolCalls(conversationId), ex.Message);
@@ -308,6 +310,7 @@ public sealed class AgentService : IAgentService
     {
         AgentMessage? userMessage = null;
         AgentMessage? assistantMessage = null;
+        var responseText = new StringBuilder();
         var lastToolSignature = string.Empty;
         var lockHeld = false;
 
@@ -336,7 +339,7 @@ public sealed class AgentService : IAgentService
 
             var trimmedMessage = message.Trim();
             userMessage = _repository.AddMessage(conversationId, AgentMessageRole.User, trimmedMessage);
-            assistantMessage = _repository.AddMessage(conversationId, AgentMessageRole.Assistant, "正在思考...", AgentMessageStatus.Pending);
+            assistantMessage = _repository.AddMessage(conversationId, AgentMessageRole.Assistant, string.Empty, AgentMessageStatus.Pending);
             await writer.WriteAsync(
                 new AgentStreamEvent(AgentStreamEventKind.Started, userMessage, assistantMessage, string.Empty, GetToolCalls(conversationId), string.Empty),
                 cancellationToken).ConfigureAwait(false);
@@ -351,8 +354,6 @@ public sealed class AgentService : IAgentService
 
             var agent = await BuildAgentAsync(settings, detail.Conversation.Mode, cancellationToken).ConfigureAwait(false);
             var session = await CreateSessionAsync(agent, detail.Conversation, detail.Messages, cancellationToken).ConfigureAwait(false);
-            var responseText = new StringBuilder();
-
             await foreach (var update in agent.RunStreamingAsync(
                     trimmedMessage,
                     session,
@@ -379,7 +380,7 @@ public sealed class AgentService : IAgentService
 
             if (_pendingApprovalCall is not null)
             {
-                assistantMessage = MarkAssistantWaitingForToolApproval(assistantMessage);
+                assistantMessage = MarkAssistantWaitingForToolApproval(assistantMessage, responseText.ToString());
                 await writer.WriteAsync(
                     new AgentStreamEvent(AgentStreamEventKind.Completed, userMessage, assistantMessage, string.Empty, GetToolCalls(conversationId), string.Empty),
                     CancellationToken.None).ConfigureAwait(false);
@@ -394,6 +395,7 @@ public sealed class AgentService : IAgentService
             {
                 Content = assistantText,
                 Status = AgentMessageStatus.Complete,
+                ActivityText = string.Empty,
                 Error = string.Empty
             };
             await SaveSessionAsync(agent, session, conversationId, cancellationToken).ConfigureAwait(false);
@@ -406,7 +408,7 @@ public sealed class AgentService : IAgentService
         {
             if (assistantMessage is not null)
             {
-                assistantMessage = MarkAssistantWaitingForToolApproval(assistantMessage);
+                assistantMessage = MarkAssistantWaitingForToolApproval(assistantMessage, responseText.ToString());
             }
 
             await writer.WriteAsync(
@@ -422,6 +424,7 @@ public sealed class AgentService : IAgentService
                 {
                     Content = string.Empty,
                     Status = AgentMessageStatus.Failed,
+                    ActivityText = string.Empty,
                     Error = ex.Message
                 };
             }
@@ -437,6 +440,7 @@ public sealed class AgentService : IAgentService
                 {
                     Content = string.Empty,
                     Status = AgentMessageStatus.Failed,
+                    ActivityText = string.Empty,
                     Error = ex.Message
                 };
             }
@@ -539,25 +543,36 @@ public sealed class AgentService : IAgentService
             return null;
         }
 
-        var content = $"工具 {call.ToolName} 已执行完成，正在继续处理...";
-        _repository.UpdateMessage(assistant.Id, content, AgentMessageStatus.Pending);
+        var activity = $"工具 {call.ToolName} 已执行完成，正在继续处理...";
+        _repository.UpdateMessageActivity(assistant.Id, AgentMessageStatus.Pending, activity);
         return assistant with
         {
-            Content = content,
             Status = AgentMessageStatus.Pending,
+            ActivityText = activity,
             Error = string.Empty
         };
     }
 
-    private AgentMessage MarkAssistantWaitingForToolApproval(AgentMessage assistant)
+    private AgentMessage MarkAssistantWaitingForToolApproval(AgentMessage assistant, string? latestContent = null)
     {
-        _repository.UpdateMessage(assistant.Id, WaitingForToolApprovalText, AgentMessageStatus.Pending);
+        var content = ResolveAssistantBody(assistant, latestContent);
+        _repository.UpdateMessage(assistant.Id, content, AgentMessageStatus.Pending, activityText: WaitingForToolApprovalText);
         return assistant with
         {
-            Content = WaitingForToolApprovalText,
+            Content = content,
             Status = AgentMessageStatus.Pending,
+            ActivityText = WaitingForToolApprovalText,
             Error = string.Empty
         };
+    }
+
+    private static string ResolveAssistantBody(AgentMessage assistant, string? latestContent)
+    {
+        var content = string.IsNullOrWhiteSpace(latestContent) ? assistant.Content : latestContent.Trim();
+        return string.Equals(content, WaitingForToolApprovalText, StringComparison.Ordinal)
+            || string.Equals(content, "正在思考...", StringComparison.Ordinal)
+            ? string.Empty
+            : content;
     }
 
     private AgentMessage? MarkAssistantStoppedAfterToolRejected(AgentToolCall call)
@@ -574,12 +589,12 @@ public sealed class AgentService : IAgentService
             return null;
         }
 
-        const string content = "已拒绝该工具调用，任务已暂停。";
-        _repository.UpdateMessage(assistant.Id, content, AgentMessageStatus.Complete);
+        const string activity = "已拒绝该工具调用，任务已暂停。";
+        _repository.UpdateMessageActivity(assistant.Id, AgentMessageStatus.Complete, activity);
         return assistant with
         {
-            Content = content,
             Status = AgentMessageStatus.Complete,
+            ActivityText = activity,
             Error = string.Empty
         };
     }
@@ -598,14 +613,14 @@ public sealed class AgentService : IAgentService
             return null;
         }
 
-        var content = string.IsNullOrWhiteSpace(call.Error)
+        var activity = string.IsNullOrWhiteSpace(call.Error)
             ? "工具执行失败，任务已暂停。"
             : "工具执行失败，任务已暂停: " + call.Error;
-        _repository.UpdateMessage(assistant.Id, content, AgentMessageStatus.Complete);
+        _repository.UpdateMessageActivity(assistant.Id, AgentMessageStatus.Complete, activity);
         return assistant with
         {
-            Content = content,
             Status = AgentMessageStatus.Complete,
+            ActivityText = activity,
             Error = string.Empty
         };
     }
@@ -680,6 +695,7 @@ public sealed class AgentService : IAgentService
             {
                 Content = assistantText,
                 Status = AgentMessageStatus.Complete,
+                ActivityText = string.Empty,
                 Error = string.Empty
             };
             await SaveSessionAsync(agent, session, conversationId, cancellationToken).ConfigureAwait(false);
@@ -698,19 +714,33 @@ public sealed class AgentService : IAgentService
         {
             if (assistantMessage is not null)
             {
-                _repository.UpdateMessage(assistantMessage.Id, string.Empty, AgentMessageStatus.Failed, ex.Message);
+                var activity = "继续处理失败，任务已暂停: " + ex.Message;
+                _repository.UpdateMessageActivity(assistantMessage.Id, AgentMessageStatus.Complete, activity);
+                assistantMessage = assistantMessage with
+                {
+                    Status = AgentMessageStatus.Complete,
+                    ActivityText = activity,
+                    Error = string.Empty
+                };
             }
 
-            return new AgentSendResult(false, null, null, _repository.GetPendingToolCalls(conversationId), ex.Message);
+            return new AgentSendResult(false, null, assistantMessage, _repository.GetPendingToolCalls(conversationId), ex.Message);
         }
         catch (Exception ex)
         {
             if (assistantMessage is not null)
             {
-                _repository.UpdateMessage(assistantMessage.Id, string.Empty, AgentMessageStatus.Failed, ex.Message);
+                var activity = "继续处理失败，任务已暂停: " + ex.Message;
+                _repository.UpdateMessageActivity(assistantMessage.Id, AgentMessageStatus.Complete, activity);
+                assistantMessage = assistantMessage with
+                {
+                    Status = AgentMessageStatus.Complete,
+                    ActivityText = activity,
+                    Error = string.Empty
+                };
             }
 
-            return new AgentSendResult(false, null, null, _repository.GetPendingToolCalls(conversationId), ex.Message);
+            return new AgentSendResult(false, null, assistantMessage, _repository.GetPendingToolCalls(conversationId), ex.Message);
         }
         finally
         {

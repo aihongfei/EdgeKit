@@ -264,6 +264,7 @@ public sealed partial class AgentChatPage : Page
 
         PromptBox.Text = string.Empty;
         SetBusy(true);
+        PromptBox.Focus(FocusState.Programmatic);
         _streamingAssistantItem = null;
 
         try
@@ -277,6 +278,7 @@ public sealed partial class AgentChatPage : Page
         {
             _streamingAssistantItem = null;
             SetBusy(false);
+            PromptBox.Focus(FocusState.Programmatic);
             LoadConversations(keepSelection: true);
         }
     }
@@ -333,7 +335,7 @@ public sealed partial class AgentChatPage : Page
             _streamingAssistantItem = null;
         }
 
-        ScrollMessagesToEnd();
+        ScrollMessagesToEnd(force: true);
     }
 
     private AgentTimelineItemViewModel UpsertMessage(AgentMessage message)
@@ -756,7 +758,6 @@ public sealed partial class AgentChatPage : Page
     {
         _sending = busy;
         SendButton.IsEnabled = !busy;
-        PromptBox.IsEnabled = !busy;
     }
 
     private void ShowStatus(string title, string message, InfoBarSeverity severity)
@@ -798,6 +799,14 @@ public sealed partial class AgentChatPage : Page
 
     private void ScrollMessagesToEnd(bool force = false)
     {
+        ScrollMessagesToEndCore(force);
+        DispatcherQueue.TryEnqueue(
+            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+            () => ScrollMessagesToEndCore(force: true));
+    }
+
+    private void ScrollMessagesToEndCore(bool force)
+    {
         var sv = FindScrollViewer(MessageList);
         if (sv is null)
         {
@@ -809,7 +818,13 @@ public sealed partial class AgentChatPage : Page
             return;
         }
 
-        sv?.ChangeView(null, sv.ScrollableHeight, null, disableAnimation: true);
+        if (_timeline.Count > 0)
+        {
+            MessageList.ScrollIntoView(_timeline[^1]);
+        }
+
+        MessageList.UpdateLayout();
+        sv.ChangeView(null, sv.ScrollableHeight, null, disableAnimation: true);
     }
 
     private static ScrollViewer? FindScrollViewer(DependencyObject parent)

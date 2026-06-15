@@ -185,8 +185,8 @@ public sealed class SqliteAgentRepository : IAgentRepository
         using var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText =
-            "INSERT INTO AgentMessages (ConversationId, Role, Content, Sequence, Status, Error, CreatedUtc) " +
-            "VALUES ($conversation, $role, $content, $sequence, $status, $error, $created); " +
+            "INSERT INTO AgentMessages (ConversationId, Role, Content, Sequence, Status, ActivityText, Error, CreatedUtc) " +
+            "VALUES ($conversation, $role, $content, $sequence, $status, '', $error, $created); " +
             "SELECT last_insert_rowid();";
         command.Parameters.AddWithValue("$conversation", conversationId);
         command.Parameters.AddWithValue("$role", role.ToString());
@@ -207,17 +207,32 @@ public sealed class SqliteAgentRepository : IAgentRepository
 
         transaction.Commit();
         Changed?.Invoke(this, EventArgs.Empty);
-        return new AgentMessage(id, conversationId, role, content, sequence, status, error, now);
+        return new AgentMessage(id, conversationId, role, content, sequence, status, string.Empty, error, now);
     }
 
-    public void UpdateMessage(long messageId, string content, AgentMessageStatus status, string error = "")
+    public void UpdateMessage(long messageId, string content, AgentMessageStatus status, string error = "", string activityText = "")
     {
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
         command.CommandText =
-            "UPDATE AgentMessages SET Content = $content, Status = $status, Error = $error WHERE Id = $id;";
+            "UPDATE AgentMessages SET Content = $content, Status = $status, ActivityText = $activity, Error = $error WHERE Id = $id;";
         command.Parameters.AddWithValue("$content", content);
         command.Parameters.AddWithValue("$status", status.ToString());
+        command.Parameters.AddWithValue("$activity", activityText);
+        command.Parameters.AddWithValue("$error", error);
+        command.Parameters.AddWithValue("$id", messageId);
+        command.ExecuteNonQuery();
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void UpdateMessageActivity(long messageId, AgentMessageStatus status, string activityText, string error = "")
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "UPDATE AgentMessages SET Status = $status, ActivityText = $activity, Error = $error WHERE Id = $id;";
+        command.Parameters.AddWithValue("$status", status.ToString());
+        command.Parameters.AddWithValue("$activity", activityText);
         command.Parameters.AddWithValue("$error", error);
         command.Parameters.AddWithValue("$id", messageId);
         command.ExecuteNonQuery();
@@ -357,6 +372,7 @@ public sealed class SqliteAgentRepository : IAgentRepository
             "Content TEXT NOT NULL, " +
             "Sequence INTEGER NOT NULL, " +
             "Status TEXT NOT NULL, " +
+            "ActivityText TEXT NOT NULL DEFAULT '', " +
             "Error TEXT NOT NULL DEFAULT '', " +
             "CreatedUtc TEXT NOT NULL);" +
             "CREATE INDEX IF NOT EXISTS IX_AgentMessages_Conversation_Sequence ON AgentMessages(ConversationId, Sequence);" +
@@ -378,6 +394,25 @@ public sealed class SqliteAgentRepository : IAgentRepository
             "Error TEXT NOT NULL DEFAULT '');" +
             "CREATE INDEX IF NOT EXISTS IX_AgentToolCalls_Conversation ON AgentToolCalls(ConversationId, CreatedUtc);";
         command.ExecuteNonQuery();
+        EnsureColumn(connection, "AgentMessages", "ActivityText", "TEXT NOT NULL DEFAULT ''");
+    }
+
+    private static void EnsureColumn(SqliteConnection connection, string tableName, string columnName, string columnDefinition)
+    {
+        using (var check = connection.CreateCommand())
+        {
+            check.CommandText = "SELECT 1 FROM pragma_table_info($table) WHERE name = $column;";
+            check.Parameters.AddWithValue("$table", tableName);
+            check.Parameters.AddWithValue("$column", columnName);
+            if (check.ExecuteScalar() is not null)
+            {
+                return;
+            }
+        }
+
+        using var alter = connection.CreateCommand();
+        alter.CommandText = $"ALTER TABLE {tableName} ADD COLUMN {columnName} {columnDefinition};";
+        alter.ExecuteNonQuery();
     }
 
     private SqliteConnection OpenConnection()
@@ -401,7 +436,7 @@ public sealed class SqliteAgentRepository : IAgentRepository
         var result = new List<AgentMessage>();
         using var command = connection.CreateCommand();
         command.CommandText =
-            "SELECT Id, ConversationId, Role, Content, Sequence, Status, Error, CreatedUtc " +
+            "SELECT Id, ConversationId, Role, Content, Sequence, Status, ActivityText, Error, CreatedUtc " +
             "FROM AgentMessages WHERE ConversationId = $conversation ORDER BY Sequence ASC, Id ASC;";
         command.Parameters.AddWithValue("$conversation", conversationId);
 
@@ -452,7 +487,8 @@ public sealed class SqliteAgentRepository : IAgentRepository
             reader.GetInt32(4),
             ParseEnum(reader.GetString(5), AgentMessageStatus.Complete),
             reader.GetString(6),
-            ParseDate(reader.GetString(7)));
+            reader.GetString(7),
+            ParseDate(reader.GetString(8)));
 
     private static AgentToolCall ReadToolCall(SqliteDataReader reader)
         => new(
