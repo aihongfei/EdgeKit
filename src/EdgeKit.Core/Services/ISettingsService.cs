@@ -91,6 +91,26 @@ public interface ISettingsService
 
     bool AiAllowClipboardTools { get; set; }
 
+    bool AiEnableFileTools { get; set; }
+
+    bool AiEnableShellTools { get; set; }
+
+    bool AiEnableWebTools { get; set; }
+
+    bool AiEnableMcpTools { get; set; }
+
+    AgentSearchProvider AiSearchProvider { get; set; }
+
+    string AiSearchApiKeyEncrypted { get; set; }
+
+    string AiSearchApiKeyPreview { get; set; }
+
+    string AiTrustedDirectories { get; set; }
+
+    string AiShellCommandWhitelist { get; set; }
+
+    string AiMcpServersJson { get; set; }
+
     /// <summary>加载持久化的设置。</summary>
     void Load();
 

@@ -26,6 +26,7 @@ public sealed class AgentService : IAgentService
     private readonly IAgentRepository _repository;
     private readonly AgentToolRegistry _toolRegistry;
     private readonly AgentToolExecutor _toolExecutor;
+    private readonly McpToolService _mcpTools;
 
     private long _activeConversationId;
     private long _activeAssistantMessageId;
@@ -35,12 +36,14 @@ public sealed class AgentService : IAgentService
         ISettingsService settings,
         IAgentRepository repository,
         AgentToolRegistry toolRegistry,
-        AgentToolExecutor toolExecutor)
+        AgentToolExecutor toolExecutor,
+        McpToolService mcpTools)
     {
         _settings = settings;
         _repository = repository;
         _toolRegistry = toolRegistry;
         _toolExecutor = toolExecutor;
+        _mcpTools = mcpTools;
 
         _repository.Changed += (_, _) => Changed?.Invoke(this, EventArgs.Empty);
         _settings.Changed += (_, _) => Changed?.Invoke(this, EventArgs.Empty);
@@ -51,6 +54,7 @@ public sealed class AgentService : IAgentService
     public AgentSettings GetSettings()
     {
         var apiKey = string.Empty;
+        var searchApiKey = string.Empty;
         try
         {
             apiKey = SecretProtector.Unprotect(_settings.AiApiKeyEncrypted);
@@ -58,6 +62,15 @@ public sealed class AgentService : IAgentService
         catch
         {
             apiKey = string.Empty;
+        }
+
+        try
+        {
+            searchApiKey = SecretProtector.Unprotect(_settings.AiSearchApiKeyEncrypted);
+        }
+        catch
+        {
+            searchApiKey = string.Empty;
         }
 
         return new AgentSettings(
@@ -69,7 +82,17 @@ public sealed class AgentService : IAgentService
             _settings.AiTemperature,
             _settings.AiDefaultMode,
             _settings.AiActionMode,
-            _settings.AiAllowClipboardTools);
+            _settings.AiAllowClipboardTools,
+            _settings.AiEnableFileTools,
+            _settings.AiEnableShellTools,
+            _settings.AiEnableWebTools,
+            _settings.AiEnableMcpTools,
+            _settings.AiSearchProvider,
+            searchApiKey,
+            _settings.AiSearchApiKeyPreview,
+            _settings.AiTrustedDirectories,
+            _settings.AiShellCommandWhitelist,
+            _settings.AiMcpServersJson);
     }
 
     public void SaveSettings(AgentSettings settings)
@@ -88,6 +111,21 @@ public sealed class AgentService : IAgentService
             _settings.AiApiKeyPreview = SecretProtector.BuildPreview(settings.ApiKey.Trim());
         }
 
+        _settings.AiEnableFileTools = settings.EnableFileTools;
+        _settings.AiEnableShellTools = settings.EnableShellTools;
+        _settings.AiEnableWebTools = settings.EnableWebTools;
+        _settings.AiEnableMcpTools = settings.EnableMcpTools;
+        _settings.AiSearchProvider = settings.SearchProvider;
+        _settings.AiTrustedDirectories = settings.TrustedDirectories;
+        _settings.AiShellCommandWhitelist = settings.ShellCommandWhitelist;
+        _settings.AiMcpServersJson = settings.McpServersJson;
+
+        if (!string.IsNullOrWhiteSpace(settings.SearchApiKey))
+        {
+            _settings.AiSearchApiKeyEncrypted = SecretProtector.Protect(settings.SearchApiKey.Trim());
+            _settings.AiSearchApiKeyPreview = SecretProtector.BuildPreview(settings.SearchApiKey.Trim());
+        }
+
         _settings.Save();
         Changed?.Invoke(this, EventArgs.Empty);
     }
@@ -103,7 +141,7 @@ public sealed class AgentService : IAgentService
 
         try
         {
-            var agent = BuildAgent(settings, AgentConversationMode.Chat);
+            var agent = await BuildAgentAsync(settings, AgentConversationMode.Chat, cancellationToken).ConfigureAwait(false);
             var session = await agent.CreateSessionAsync(cancellationToken).ConfigureAwait(false);
             var response = await agent.RunAsync(
                 "请只回复“OK”。",
@@ -178,7 +216,7 @@ public sealed class AgentService : IAgentService
 
         try
         {
-            var agent = BuildAgent(settings, detail.Conversation.Mode);
+            var agent = await BuildAgentAsync(settings, detail.Conversation.Mode, cancellationToken).ConfigureAwait(false);
             var session = await CreateSessionAsync(agent, detail.Conversation, detail.Messages, cancellationToken).ConfigureAwait(false);
             var response = await agent.RunAsync(
                 message.Trim(),
@@ -273,7 +311,7 @@ public sealed class AgentService : IAgentService
             _activeAssistantMessageId = assistantMessage.Id;
             _toolCallsThisTurn = 0;
 
-            var agent = BuildAgent(settings, detail.Conversation.Mode);
+            var agent = await BuildAgentAsync(settings, detail.Conversation.Mode, cancellationToken).ConfigureAwait(false);
             var session = await CreateSessionAsync(agent, detail.Conversation, detail.Messages, cancellationToken).ConfigureAwait(false);
             var responseText = new StringBuilder();
 
@@ -428,7 +466,7 @@ public sealed class AgentService : IAgentService
 
         try
         {
-            var agent = BuildAgent(settings, detail.Conversation.Mode);
+            var agent = await BuildAgentAsync(settings, detail.Conversation.Mode, cancellationToken).ConfigureAwait(false);
             var session = await CreateSessionAsync(agent, detail.Conversation, detail.Messages, cancellationToken).ConfigureAwait(false);
             var prompt = $"工具 {call.ToolName} 已执行完成，请根据以下结果用中文简洁总结，并说明下一步建议：\n{call.ResultSummary}";
             var response = await agent.RunAsync(
@@ -496,10 +534,10 @@ public sealed class AgentService : IAgentService
             conversationId > 0 ? GetToolCalls(conversationId) : Array.Empty<AgentToolCall>(),
             error);
 
-    private ChatClientAgent BuildAgent(AgentSettings settings, AgentConversationMode mode)
+    private async Task<ChatClientAgent> BuildAgentAsync(AgentSettings settings, AgentConversationMode mode, CancellationToken cancellationToken)
     {
         var chatClient = CreateChatClient(settings);
-        var tools = BuildTools(mode, settings);
+        var tools = await BuildToolsAsync(mode, settings, cancellationToken).ConfigureAwait(false);
         var options = new ChatClientAgentOptions
         {
             Name = "EdgeKit",
@@ -532,7 +570,7 @@ public sealed class AgentService : IAgentService
             .Build(null);
     }
 
-    private IList<AIFunction> BuildTools(AgentConversationMode mode, AgentSettings settings)
+    private async Task<IList<AIFunction>> BuildToolsAsync(AgentConversationMode mode, AgentSettings settings, CancellationToken cancellationToken)
     {
         var descriptors = _toolRegistry.GetTools(mode, settings)
             .Where(d => _toolExecutor.ShouldExposeTool(d, settings))
@@ -542,12 +580,17 @@ public sealed class AgentService : IAgentService
         foreach (var descriptor in descriptors)
         {
             result.Add(AIFunctionFactory.Create(
-                (Func<JsonElement, CancellationToken, Task<string>>)((arguments, cancellationToken) => InvokeToolAsync(descriptor.Id, arguments, cancellationToken)),
+                (Func<AIFunctionArguments, CancellationToken, Task<string>>)((arguments, cancellationToken) => InvokeToolAsync(descriptor.Id, ToJsonElement(arguments), cancellationToken)),
                 new AIFunctionFactoryOptions
                 {
                     Name = descriptor.Id,
                     Description = descriptor.Description
                 }));
+        }
+
+        if (mode != AgentConversationMode.Translate)
+        {
+            result.AddRange(await _mcpTools.BuildToolsAsync(settings, InvokeMcpToolAsync, cancellationToken).ConfigureAwait(false));
         }
 
         return result;
@@ -567,6 +610,7 @@ public sealed class AgentService : IAgentService
 
         var settings = GetSettings();
         var descriptor = _toolExecutor.Find(toolId);
+        descriptor ??= _mcpTools.FindDescriptor(toolId, settings);
         if (descriptor is null)
         {
             return "未知工具: " + toolId;
@@ -574,7 +618,8 @@ public sealed class AgentService : IAgentService
 
         var argsJson = arguments.ValueKind == JsonValueKind.Undefined ? "{}" : arguments.GetRawText();
         var argsSummary = AgentToolExecutor.ArgumentsSummary(arguments);
-        var approval = _toolExecutor.CanAutoExecute(descriptor, settings)
+        var approval = (_toolExecutor.CanAutoExecute(descriptor, settings)
+                || _toolExecutor.IsTrustedToolCall(descriptor, arguments, settings))
             ? AgentToolApprovalStatus.NotRequired
             : AgentToolApprovalStatus.Pending;
         var execution = approval == AgentToolApprovalStatus.Pending
@@ -612,6 +657,21 @@ public sealed class AgentService : IAgentService
             result.Error);
         return result.Success ? result.Result : "工具执行失败: " + result.Error;
     }
+
+    private Task<string> InvokeMcpToolAsync(string toolId, AIFunction tool, JsonElement arguments, CancellationToken cancellationToken)
+        => InvokeToolAsync(toolId, arguments, cancellationToken);
+
+    private static JsonElement ToJsonElement(AIFunctionArguments arguments)
+        => JsonSerializer.SerializeToElement(
+            arguments.ToDictionary(pair => pair.Key, pair => NormalizeArgumentValue(pair.Value), StringComparer.Ordinal),
+            JsonOptions);
+
+    private static object? NormalizeArgumentValue(object? value)
+        => value switch
+        {
+            JsonElement element => element.ValueKind == JsonValueKind.Undefined ? null : element.Clone(),
+            _ => value
+        };
 
     private ChatClientAgentRunOptions BuildRunOptions(AgentSettings settings, AgentConversationMode mode)
         => new(new ChatOptions
@@ -727,14 +787,22 @@ public sealed class AgentService : IAgentService
         var actionText = settings.ActionMode switch
         {
             AgentActionMode.SuggestOnly => "动作模式：只给建议，不主动执行写操作。",
-            AgentActionMode.AutoWithWhitelist => "动作模式：白名单自动化；但危险动作仍必须确认。",
+            AgentActionMode.AutoWithWhitelist => "动作模式：白名单自动化；只读工具可自动执行，命中可信目录或命令白名单的写入/命令可自动执行，其余动作必须等待用户确认工具卡片。",
             _ => "动作模式：执行写操作前必须确认。"
         };
+
+        var toolText =
+            "可用工具能力：" +
+            (settings.EnableFileTools ? " 文件读写/搜索;" : string.Empty) +
+            (settings.EnableShellTools ? " Shell 命令;" : string.Empty) +
+            (settings.EnableWebTools ? " Web 搜索/网页读取;" : string.Empty) +
+            (settings.EnableMcpTools ? " MCP 配置已启用但外部 MCP 运行时可能需要单独适配;" : string.Empty);
 
         return
             "你是 EdgeKit 桌面智能体，用中文简洁回答。" + Environment.NewLine +
             modeText + Environment.NewLine +
             actionText + Environment.NewLine +
+            toolText + Environment.NewLine +
             "不要声称已经执行未经过工具结果确认的操作。不要要求用户运行任意脚本，除非是在解释手动步骤。";
     }
 }

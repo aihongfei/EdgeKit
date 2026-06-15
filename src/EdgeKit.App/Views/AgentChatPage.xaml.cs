@@ -18,6 +18,7 @@ public sealed partial class AgentChatPage : Page
     private IAgentService? _agent;
     private long _selectedConversationId;
     private bool _loading;
+    private bool _settingsLoading;
     private bool _sending;
     private AgentTimelineItemViewModel? _streamingAssistantItem;
 
@@ -36,6 +37,7 @@ public sealed partial class AgentChatPage : Page
             _agent = parameter.AgentService;
             _agent.Changed += OnAgentChanged;
             SelectMode(_agent.GetSettings().DefaultMode);
+            LoadAgentSettings();
             LoadConversations();
         }
     }
@@ -58,6 +60,7 @@ public sealed partial class AgentChatPage : Page
 
         DispatcherQueue.TryEnqueue(() =>
         {
+            LoadAgentSettings();
             LoadConversations(keepSelection: true);
             LoadConversationDetail();
         });
@@ -383,6 +386,163 @@ public sealed partial class AgentChatPage : Page
         LoadConversationDetail();
     }
 
+    private void OnShowSettingsClick(object sender, RoutedEventArgs e)
+    {
+        LoadAgentSettings();
+        ChatPanel.Visibility = Visibility.Collapsed;
+        SettingsPanel.Visibility = Visibility.Visible;
+    }
+
+    private void OnShowChatClick(object sender, RoutedEventArgs e)
+    {
+        SaveAgentSettings(includeApiKey: false, includeSearchApiKey: false);
+        SettingsPanel.Visibility = Visibility.Collapsed;
+        ChatPanel.Visibility = Visibility.Visible;
+    }
+
+    private void LoadAgentSettings()
+    {
+        if (_agent is null)
+        {
+            return;
+        }
+
+        var settings = _agent.GetSettings();
+        _settingsLoading = true;
+        AiEnabledSwitch.IsOn = settings.Enabled;
+        AiBaseUrlBox.Text = settings.BaseUrl;
+        AiModelBox.Text = settings.Model;
+        AiApiKeyBox.Password = string.Empty;
+        AiApiKeyHintText.Text = string.IsNullOrWhiteSpace(settings.ApiKeyPreview)
+            ? "未配置 API Key"
+            : "已配置 API Key " + settings.ApiKeyPreview;
+        AiTemperatureBox.Value = settings.Temperature;
+        SelectAgentMode(AiDefaultModeBox, settings.DefaultMode);
+        SelectActionMode(settings.ActionMode);
+        AiAllowClipboardToolsSwitch.IsOn = settings.AllowClipboardTools;
+        AiEnableFileToolsSwitch.IsOn = settings.EnableFileTools;
+        AiEnableShellToolsSwitch.IsOn = settings.EnableShellTools;
+        AiEnableWebToolsSwitch.IsOn = settings.EnableWebTools;
+        AiEnableMcpToolsSwitch.IsOn = settings.EnableMcpTools;
+        SelectSearchProvider(settings.SearchProvider);
+        AiSearchApiKeyBox.Password = string.Empty;
+        AiSearchApiKeyHintText.Text = string.IsNullOrWhiteSpace(settings.SearchApiKeyPreview)
+            ? "未配置 Search API Key"
+            : "已配置 Search API Key " + settings.SearchApiKeyPreview;
+        AiTrustedDirectoriesBox.Text = settings.TrustedDirectories;
+        AiShellCommandWhitelistBox.Text = settings.ShellCommandWhitelist;
+        AiMcpServersJsonBox.Text = settings.McpServersJson;
+        _settingsLoading = false;
+    }
+
+    private void OnAgentSettingChanged(object sender, RoutedEventArgs e)
+        => SaveAgentSettings(includeApiKey: false, includeSearchApiKey: false);
+
+    private void OnAgentSelectionSettingChanged(object sender, SelectionChangedEventArgs e)
+        => SaveAgentSettings(includeApiKey: false, includeSearchApiKey: false);
+
+    private void OnAgentTextSettingLostFocus(object sender, RoutedEventArgs e)
+        => SaveAgentSettings(includeApiKey: false, includeSearchApiKey: false);
+
+    private void OnAgentNumberSettingChanged(NumberBox sender, NumberBoxValueChangedEventArgs args)
+    {
+        if (_settingsLoading || double.IsNaN(args.NewValue))
+        {
+            return;
+        }
+
+        SaveAgentSettings(includeApiKey: false, includeSearchApiKey: false);
+    }
+
+    private void OnAgentApiKeyChanged(object sender, RoutedEventArgs e)
+    {
+        if (_settingsLoading || string.IsNullOrWhiteSpace(AiApiKeyBox.Password))
+        {
+            return;
+        }
+
+        SaveAgentSettings(includeApiKey: true, includeSearchApiKey: false);
+    }
+
+    private void OnAgentSearchApiKeyChanged(object sender, RoutedEventArgs e)
+    {
+        if (_settingsLoading || string.IsNullOrWhiteSpace(AiSearchApiKeyBox.Password))
+        {
+            return;
+        }
+
+        SaveAgentSettings(includeApiKey: false, includeSearchApiKey: true);
+    }
+
+    private async void OnAgentTestClick(object sender, RoutedEventArgs e)
+    {
+        if (_agent is null)
+        {
+            return;
+        }
+
+        SaveAgentSettings(
+            includeApiKey: !string.IsNullOrWhiteSpace(AiApiKeyBox.Password),
+            includeSearchApiKey: !string.IsNullOrWhiteSpace(AiSearchApiKeyBox.Password));
+        AiTestButton.IsEnabled = false;
+        AgentSettingsStatusBar.IsOpen = false;
+        var result = await _agent.TestConnectionAsync();
+        AiTestButton.IsEnabled = true;
+        AgentSettingsStatusBar.Title = result.Success ? "连接成功" : "连接失败";
+        AgentSettingsStatusBar.Message = result.Message;
+        AgentSettingsStatusBar.Severity = result.Success ? InfoBarSeverity.Success : InfoBarSeverity.Error;
+        AgentSettingsStatusBar.IsOpen = true;
+    }
+
+    private void SaveAgentSettings(bool includeApiKey, bool includeSearchApiKey)
+    {
+        if (_settingsLoading || _agent is null)
+        {
+            return;
+        }
+
+        var current = _agent.GetSettings();
+        _agent.SaveSettings(new AgentSettings(
+            AiEnabledSwitch.IsOn,
+            AiBaseUrlBox.Text,
+            AiModelBox.Text,
+            includeApiKey ? AiApiKeyBox.Password : string.Empty,
+            current.ApiKeyPreview,
+            double.IsNaN(AiTemperatureBox.Value) ? current.Temperature : AiTemperatureBox.Value,
+            GetSelectedAgentMode(AiDefaultModeBox),
+            GetSelectedActionMode(),
+            AiAllowClipboardToolsSwitch.IsOn,
+            AiEnableFileToolsSwitch.IsOn,
+            AiEnableShellToolsSwitch.IsOn,
+            AiEnableWebToolsSwitch.IsOn,
+            AiEnableMcpToolsSwitch.IsOn,
+            GetSelectedSearchProvider(),
+            includeSearchApiKey ? AiSearchApiKeyBox.Password : string.Empty,
+            current.SearchApiKeyPreview,
+            AiTrustedDirectoriesBox.Text,
+            AiShellCommandWhitelistBox.Text,
+            AiMcpServersJsonBox.Text));
+
+        if (includeApiKey || includeSearchApiKey)
+        {
+            _settingsLoading = true;
+            var updated = _agent.GetSettings();
+            if (includeApiKey)
+            {
+                AiApiKeyBox.Password = string.Empty;
+                AiApiKeyHintText.Text = "已配置 API Key " + updated.ApiKeyPreview;
+            }
+
+            if (includeSearchApiKey)
+            {
+                AiSearchApiKeyBox.Password = string.Empty;
+                AiSearchApiKeyHintText.Text = "已配置 Search API Key " + updated.SearchApiKeyPreview;
+            }
+
+            _settingsLoading = false;
+        }
+    }
+
     private AgentConversationMode GetSelectedMode()
     {
         var tag = (ModeBox.SelectedItem as ComboBoxItem)?.Tag as string;
@@ -414,6 +574,73 @@ public sealed partial class AgentChatPage : Page
         }
 
         _loading = false;
+    }
+
+    private static AgentConversationMode GetSelectedAgentMode(ComboBox box)
+    {
+        var tag = (box.SelectedItem as ComboBoxItem)?.Tag as string;
+        return tag switch
+        {
+            "Translate" => AgentConversationMode.Translate,
+            "WindowsConfig" => AgentConversationMode.WindowsConfig,
+            _ => AgentConversationMode.Chat
+        };
+    }
+
+    private AgentActionMode GetSelectedActionMode()
+    {
+        var tag = (AiActionModeBox.SelectedItem as ComboBoxItem)?.Tag as string;
+        return tag switch
+        {
+            "SuggestOnly" => AgentActionMode.SuggestOnly,
+            "AutoWithWhitelist" => AgentActionMode.AutoWithWhitelist,
+            _ => AgentActionMode.ConfirmBeforeAction
+        };
+    }
+
+    private AgentSearchProvider GetSelectedSearchProvider()
+    {
+        var tag = (AiSearchProviderBox.SelectedItem as ComboBoxItem)?.Tag as string;
+        return tag == "Tavily" ? AgentSearchProvider.Tavily : AgentSearchProvider.Brave;
+    }
+
+    private static void SelectAgentMode(ComboBox box, AgentConversationMode mode)
+    {
+        var tag = mode switch
+        {
+            AgentConversationMode.Translate => "Translate",
+            AgentConversationMode.WindowsConfig => "WindowsConfig",
+            _ => "Chat"
+        };
+
+        SelectComboTag(box, tag);
+    }
+
+    private void SelectActionMode(AgentActionMode mode)
+    {
+        var tag = mode switch
+        {
+            AgentActionMode.SuggestOnly => "SuggestOnly",
+            AgentActionMode.AutoWithWhitelist => "AutoWithWhitelist",
+            _ => "ConfirmBeforeAction"
+        };
+
+        SelectComboTag(AiActionModeBox, tag);
+    }
+
+    private void SelectSearchProvider(AgentSearchProvider provider)
+        => SelectComboTag(AiSearchProviderBox, provider == AgentSearchProvider.Tavily ? "Tavily" : "Brave");
+
+    private static void SelectComboTag(ComboBox box, string tag)
+    {
+        foreach (var item in box.Items.OfType<ComboBoxItem>())
+        {
+            if ((item.Tag as string) == tag)
+            {
+                box.SelectedItem = item;
+                return;
+            }
+        }
     }
 
     private void SetBusy(bool busy)

@@ -14,6 +14,12 @@ public enum AgentActionMode
     AutoWithWhitelist
 }
 
+public enum AgentSearchProvider
+{
+    Brave,
+    Tavily
+}
+
 public enum AgentMessageRole
 {
     System,
@@ -64,7 +70,17 @@ public sealed record AgentSettings(
     double Temperature,
     AgentConversationMode DefaultMode,
     AgentActionMode ActionMode,
-    bool AllowClipboardTools);
+    bool AllowClipboardTools,
+    bool EnableFileTools,
+    bool EnableShellTools,
+    bool EnableWebTools,
+    bool EnableMcpTools,
+    AgentSearchProvider SearchProvider,
+    string SearchApiKey,
+    string SearchApiKeyPreview,
+    string TrustedDirectories,
+    string ShellCommandWhitelist,
+    string McpServersJson);
 
 public sealed record AgentConversation(
     long Id,

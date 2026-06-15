@@ -20,6 +20,7 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
             <TextBlock Text="智能体" FontSize="22" FontWeight="SemiBold"
@@ -50,9 +51,15 @@
                     </DataTemplate>
                 </ListView.ItemTemplate>
             </ListView>
+
+            <Button x:Name="AgentSettingsButton"
+                    Grid.Row="3"
+                    Content="智能体设置"
+                    Height="34"
+                    Click="OnShowSettingsClick" />
         </Grid>
 
-        <Grid Grid.Column="1" RowSpacing="10">
+        <Grid x:Name="ChatPanel" Grid.Column="1" RowSpacing="10">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
@@ -193,5 +200,290 @@
                         Click="OnSendClick" />
             </Grid>
         </Grid>
+
+        <ScrollViewer x:Name="SettingsPanel"
+                      Grid.Column="1"
+                      Visibility="Collapsed">
+            <StackPanel Spacing="14" Padding="0,0,4,0">
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="智能体设置"
+                               FontSize="22"
+                               FontWeight="SemiBold"
+                               Foreground="{ThemeResource EdgeTextBrush}" />
+                    <Button Grid.Column="1"
+                            Content="返回对话"
+                            Height="34"
+                            Click="OnShowChatClick" />
+                </Grid>
+
+                <InfoBar x:Name="AgentSettingsStatusBar"
+                         IsOpen="False"
+                         IsClosable="True" />
+
+                <TextBlock Text="模型" FontSize="14" FontWeight="SemiBold"
+                           Foreground="{ThemeResource EdgeMutedBrush}" />
+
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="启用智能体" Foreground="{ThemeResource EdgeTextBrush}" />
+                        <TextBlock Text="开启后可使用对话、翻译和工具调用"
+                                   FontSize="12"
+                                   Foreground="{ThemeResource EdgeMutedBrush}"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                    <ToggleSwitch x:Name="AiEnabledSwitch"
+                                  Grid.Column="1"
+                                  Toggled="OnAgentSettingChanged" />
+                </Grid>
+
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="260" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="Base URL" Foreground="{ThemeResource EdgeTextBrush}" />
+                        <TextBlock Text="OpenAI 兼容接口地址"
+                                   FontSize="12"
+                                   Foreground="{ThemeResource EdgeMutedBrush}"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                    <TextBox x:Name="AiBaseUrlBox"
+                             Grid.Column="1"
+                             Height="36"
+                             LostFocus="OnAgentTextSettingLostFocus" />
+                </Grid>
+
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="260" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="模型" Foreground="{ThemeResource EdgeTextBrush}" />
+                        <TextBlock Text="例如 gpt-4.1-mini 或兼容服务提供的模型 id"
+                                   FontSize="12"
+                                   Foreground="{ThemeResource EdgeMutedBrush}"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                    <TextBox x:Name="AiModelBox"
+                             Grid.Column="1"
+                             Height="36"
+                             LostFocus="OnAgentTextSettingLostFocus" />
+                </Grid>
+
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="260" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="API Key" Foreground="{ThemeResource EdgeTextBrush}" />
+                        <TextBlock x:Name="AiApiKeyHintText"
+                                   FontSize="12"
+                                   Foreground="{ThemeResource EdgeMutedBrush}"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                    <PasswordBox x:Name="AiApiKeyBox"
+                                 Grid.Column="1"
+                                 Height="36"
+                                 PasswordChanged="OnAgentApiKeyChanged" />
+                </Grid>
+
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="190" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="温度" Foreground="{ThemeResource EdgeTextBrush}" />
+                        <TextBlock Text="0 更稳定，2 更发散"
+                                   FontSize="12"
+                                   Foreground="{ThemeResource EdgeMutedBrush}" />
+                    </StackPanel>
+                    <NumberBox x:Name="AiTemperatureBox"
+                               Grid.Column="1"
+                               Height="36"
+                               Minimum="0"
+                               Maximum="2"
+                               SmallChange="0.1"
+                               LargeChange="0.5"
+                               SpinButtonPlacementMode="Inline"
+                               ValueChanged="OnAgentNumberSettingChanged" />
+                </Grid>
+
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="190" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="默认模式" Foreground="{ThemeResource EdgeTextBrush}" />
+                        <TextBlock Text="新建会话时默认使用的模式"
+                                   FontSize="12"
+                                   Foreground="{ThemeResource EdgeMutedBrush}" />
+                    </StackPanel>
+                    <ComboBox x:Name="AiDefaultModeBox"
+                              Grid.Column="1"
+                              Height="36"
+                              SelectionChanged="OnAgentSelectionSettingChanged">
+                        <ComboBoxItem Content="对话" Tag="Chat" />
+                        <ComboBoxItem Content="翻译" Tag="Translate" />
+                        <ComboBoxItem Content="Windows 配置" Tag="WindowsConfig" />
+                    </ComboBox>
+                </Grid>
+
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="190" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="动作模式" Foreground="{ThemeResource EdgeTextBrush}" />
+                        <TextBlock Text="控制工具是否自动执行"
+                                   FontSize="12"
+                                   Foreground="{ThemeResource EdgeMutedBrush}" />
+                    </StackPanel>
+                    <ComboBox x:Name="AiActionModeBox"
+                              Grid.Column="1"
+                              Height="36"
+                              SelectionChanged="OnAgentSelectionSettingChanged">
+                        <ComboBoxItem Content="只给建议" Tag="SuggestOnly" />
+                        <ComboBoxItem Content="确认后执行" Tag="ConfirmBeforeAction" />
+                        <ComboBoxItem Content="白名单自动" Tag="AutoWithWhitelist" />
+                    </ComboBox>
+                </Grid>
+
+                <TextBlock Text="工具" FontSize="14" FontWeight="SemiBold"
+                           Foreground="{ThemeResource EdgeMutedBrush}" />
+
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="允许读取剪贴板历史" Foreground="{ThemeResource EdgeTextBrush}" />
+                    <ToggleSwitch x:Name="AiAllowClipboardToolsSwitch"
+                                  Grid.Column="1"
+                                  Toggled="OnAgentSettingChanged" />
+                </Grid>
+
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="启用文件工具" Foreground="{ThemeResource EdgeTextBrush}" />
+                    <ToggleSwitch x:Name="AiEnableFileToolsSwitch"
+                                  Grid.Column="1"
+                                  Toggled="OnAgentSettingChanged" />
+                </Grid>
+
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="启用 Shell 工具" Foreground="{ThemeResource EdgeTextBrush}" />
+                    <ToggleSwitch x:Name="AiEnableShellToolsSwitch"
+                                  Grid.Column="1"
+                                  Toggled="OnAgentSettingChanged" />
+                </Grid>
+
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="启用 Web 工具" Foreground="{ThemeResource EdgeTextBrush}" />
+                    <ToggleSwitch x:Name="AiEnableWebToolsSwitch"
+                                  Grid.Column="1"
+                                  Toggled="OnAgentSettingChanged" />
+                </Grid>
+
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="启用 MCP 配置" Foreground="{ThemeResource EdgeTextBrush}" />
+                    <ToggleSwitch x:Name="AiEnableMcpToolsSwitch"
+                                  Grid.Column="1"
+                                  Toggled="OnAgentSettingChanged" />
+                </Grid>
+
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="190" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Web Search Provider" Foreground="{ThemeResource EdgeTextBrush}" />
+                    <ComboBox x:Name="AiSearchProviderBox"
+                              Grid.Column="1"
+                              Height="36"
+                              SelectionChanged="OnAgentSelectionSettingChanged">
+                        <ComboBoxItem Content="Brave" Tag="Brave" />
+                        <ComboBoxItem Content="Tavily" Tag="Tavily" />
+                    </ComboBox>
+                </Grid>
+
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="260" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="Search API Key" Foreground="{ThemeResource EdgeTextBrush}" />
+                        <TextBlock x:Name="AiSearchApiKeyHintText"
+                                   FontSize="12"
+                                   Foreground="{ThemeResource EdgeMutedBrush}"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                    <PasswordBox x:Name="AiSearchApiKeyBox"
+                                 Grid.Column="1"
+                                 Height="36"
+                                 PasswordChanged="OnAgentSearchApiKeyChanged" />
+                </Grid>
+
+                <TextBox x:Name="AiTrustedDirectoriesBox"
+                         Header="可信目录白名单"
+                         PlaceholderText="每行一个目录。写文件/替换文件命中这些目录时可自动执行。"
+                         AcceptsReturn="True"
+                         TextWrapping="Wrap"
+                         MinHeight="76"
+                         LostFocus="OnAgentTextSettingLostFocus" />
+
+                <TextBox x:Name="AiShellCommandWhitelistBox"
+                         Header="命令白名单"
+                         PlaceholderText="每行一个命令前缀。例如: dotnet test"
+                         AcceptsReturn="True"
+                         TextWrapping="Wrap"
+                         MinHeight="76"
+                         LostFocus="OnAgentTextSettingLostFocus" />
+
+                <TextBox x:Name="AiMcpServersJsonBox"
+                         Header="MCP Servers JSON"
+                         PlaceholderText="填写 MCP servers JSON 配置"
+                         AcceptsReturn="True"
+                         TextWrapping="Wrap"
+                         MinHeight="96"
+                         LostFocus="OnAgentTextSettingLostFocus" />
+
+                <Button x:Name="AiTestButton"
+                        Content="连接测试"
+                        Width="110"
+                        Height="36"
+                        HorizontalAlignment="Right"
+                        Click="OnAgentTestClick" />
+            </StackPanel>
+        </ScrollViewer>
     </Grid>
 </Page>

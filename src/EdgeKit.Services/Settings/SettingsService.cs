@@ -195,6 +195,76 @@ public sealed class SettingsService : ISettingsService
         set => SetField(ref _aiAllowClipboardTools, value);
     }
 
+    private bool _aiEnableFileTools;
+    public bool AiEnableFileTools
+    {
+        get => _aiEnableFileTools;
+        set => SetField(ref _aiEnableFileTools, value);
+    }
+
+    private bool _aiEnableShellTools;
+    public bool AiEnableShellTools
+    {
+        get => _aiEnableShellTools;
+        set => SetField(ref _aiEnableShellTools, value);
+    }
+
+    private bool _aiEnableWebTools;
+    public bool AiEnableWebTools
+    {
+        get => _aiEnableWebTools;
+        set => SetField(ref _aiEnableWebTools, value);
+    }
+
+    private bool _aiEnableMcpTools;
+    public bool AiEnableMcpTools
+    {
+        get => _aiEnableMcpTools;
+        set => SetField(ref _aiEnableMcpTools, value);
+    }
+
+    private AgentSearchProvider _aiSearchProvider = AgentSearchProvider.Brave;
+    public AgentSearchProvider AiSearchProvider
+    {
+        get => _aiSearchProvider;
+        set => SetField(ref _aiSearchProvider, value);
+    }
+
+    private string _aiSearchApiKeyEncrypted = string.Empty;
+    public string AiSearchApiKeyEncrypted
+    {
+        get => _aiSearchApiKeyEncrypted;
+        set => SetField(ref _aiSearchApiKeyEncrypted, value?.Trim() ?? string.Empty);
+    }
+
+    private string _aiSearchApiKeyPreview = string.Empty;
+    public string AiSearchApiKeyPreview
+    {
+        get => _aiSearchApiKeyPreview;
+        set => SetField(ref _aiSearchApiKeyPreview, value?.Trim() ?? string.Empty);
+    }
+
+    private string _aiTrustedDirectories = string.Empty;
+    public string AiTrustedDirectories
+    {
+        get => _aiTrustedDirectories;
+        set => SetField(ref _aiTrustedDirectories, NormalizeMultiline(value));
+    }
+
+    private string _aiShellCommandWhitelist = string.Empty;
+    public string AiShellCommandWhitelist
+    {
+        get => _aiShellCommandWhitelist;
+        set => SetField(ref _aiShellCommandWhitelist, NormalizeMultiline(value));
+    }
+
+    private string _aiMcpServersJson = string.Empty;
+    public string AiMcpServersJson
+    {
+        get => _aiMcpServersJson;
+        set => SetField(ref _aiMcpServersJson, value?.Trim() ?? string.Empty);
+    }
+
     public void Load()
     {
         var values = _store.LoadAll();
@@ -230,6 +300,16 @@ public sealed class SettingsService : ISettingsService
         _aiDefaultMode = GetEnum(values, nameof(AiDefaultMode), _aiDefaultMode);
         _aiActionMode = GetEnum(values, nameof(AiActionMode), _aiActionMode);
         _aiAllowClipboardTools = GetBool(values, nameof(AiAllowClipboardTools), _aiAllowClipboardTools);
+        _aiEnableFileTools = GetBool(values, nameof(AiEnableFileTools), _aiEnableFileTools);
+        _aiEnableShellTools = GetBool(values, nameof(AiEnableShellTools), _aiEnableShellTools);
+        _aiEnableWebTools = GetBool(values, nameof(AiEnableWebTools), _aiEnableWebTools);
+        _aiEnableMcpTools = GetBool(values, nameof(AiEnableMcpTools), _aiEnableMcpTools);
+        _aiSearchProvider = GetEnum(values, nameof(AiSearchProvider), _aiSearchProvider);
+        _aiSearchApiKeyEncrypted = GetString(values, nameof(AiSearchApiKeyEncrypted), _aiSearchApiKeyEncrypted);
+        _aiSearchApiKeyPreview = GetString(values, nameof(AiSearchApiKeyPreview), _aiSearchApiKeyPreview);
+        _aiTrustedDirectories = NormalizeMultiline(GetString(values, nameof(AiTrustedDirectories), _aiTrustedDirectories));
+        _aiShellCommandWhitelist = NormalizeMultiline(GetString(values, nameof(AiShellCommandWhitelist), _aiShellCommandWhitelist));
+        _aiMcpServersJson = GetString(values, nameof(AiMcpServersJson), _aiMcpServersJson);
 
         Changed?.Invoke(this, EventArgs.Empty);
     }
@@ -261,6 +341,16 @@ public sealed class SettingsService : ISettingsService
         _store.Set(nameof(AiDefaultMode), _aiDefaultMode.ToString());
         _store.Set(nameof(AiActionMode), _aiActionMode.ToString());
         _store.Set(nameof(AiAllowClipboardTools), _aiAllowClipboardTools ? "1" : "0");
+        _store.Set(nameof(AiEnableFileTools), _aiEnableFileTools ? "1" : "0");
+        _store.Set(nameof(AiEnableShellTools), _aiEnableShellTools ? "1" : "0");
+        _store.Set(nameof(AiEnableWebTools), _aiEnableWebTools ? "1" : "0");
+        _store.Set(nameof(AiEnableMcpTools), _aiEnableMcpTools ? "1" : "0");
+        _store.Set(nameof(AiSearchProvider), _aiSearchProvider.ToString());
+        _store.Set(nameof(AiSearchApiKeyEncrypted), _aiSearchApiKeyEncrypted);
+        _store.Set(nameof(AiSearchApiKeyPreview), _aiSearchApiKeyPreview);
+        _store.Set(nameof(AiTrustedDirectories), _aiTrustedDirectories);
+        _store.Set(nameof(AiShellCommandWhitelist), _aiShellCommandWhitelist);
+        _store.Set(nameof(AiMcpServersJson), _aiMcpServersJson);
         _store.Save();
 
         Changed?.Invoke(this, EventArgs.Empty);
@@ -317,6 +407,14 @@ public sealed class SettingsService : ISettingsService
 
     private static string NormalizeModel(string? value)
         => string.IsNullOrWhiteSpace(value) ? "gpt-4.1-mini" : value.Trim();
+
+    private static string NormalizeMultiline(string? value)
+        => string.Join(
+            Environment.NewLine,
+            (value ?? string.Empty)
+                .Replace("\r\n", "\n", StringComparison.Ordinal)
+                .Replace('\r', '\n')
+                .Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries));
 
     private static EdgeTriggerSides NormalizeTriggerSides(EdgeTriggerSides value)
     {

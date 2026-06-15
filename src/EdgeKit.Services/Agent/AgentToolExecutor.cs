@@ -1,9 +1,14 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Net;
+using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using EdgeKit.Core.Agent;
 using EdgeKit.Core.Clipboard;
+using EdgeKit.Core.Services;
 using EdgeKit.Services.Diagnostics;
+using EdgeKit.Services.Settings;
 using EdgeKit.Services.Text;
 
 namespace EdgeKit.Services.Agent;
@@ -22,6 +27,9 @@ public sealed class AgentToolExecutor
     private readonly FileLockService _fileLocks;
     private readonly TextProcessingService _text;
     private readonly IClipboardRepository _clipboard;
+    private readonly HttpClient _http;
+    private readonly ISettingsService _settings;
+    private readonly McpToolService _mcpTools;
 
     public AgentToolExecutor(
         AgentToolRegistry registry,
@@ -30,7 +38,10 @@ public sealed class AgentToolExecutor
         EnvironmentVariableService environment,
         FileLockService fileLocks,
         TextProcessingService text,
-        IClipboardRepository clipboard)
+        IClipboardRepository clipboard,
+        HttpClient http,
+        ISettingsService settings,
+        McpToolService mcpTools)
     {
         _registry = registry;
         _diagnostics = diagnostics;
@@ -39,14 +50,27 @@ public sealed class AgentToolExecutor
         _fileLocks = fileLocks;
         _text = text;
         _clipboard = clipboard;
+        _http = http;
+        _settings = settings;
+        _mcpTools = mcpTools;
     }
 
     public AgentToolDescriptor? Find(string toolId) => _registry.Find(toolId);
 
     public bool CanAutoExecute(AgentToolDescriptor descriptor, AgentSettings settings)
-        => descriptor.Risk == AgentToolRisk.ReadOnly
-            && !descriptor.RequiresApproval
-            && settings.ActionMode != AgentActionMode.SuggestOnly;
+    {
+        if (settings.ActionMode == AgentActionMode.SuggestOnly)
+        {
+            return false;
+        }
+
+        if (descriptor.Risk == AgentToolRisk.ReadOnly && !descriptor.RequiresApproval)
+        {
+            return true;
+        }
+
+        return false;
+    }
 
     public bool ShouldExposeTool(AgentToolDescriptor descriptor, AgentSettings settings)
         => settings.ActionMode != AgentActionMode.SuggestOnly || descriptor.Risk == AgentToolRisk.ReadOnly;
@@ -58,6 +82,12 @@ public sealed class AgentToolExecutor
     {
         try
         {
+            if (toolId.StartsWith("mcp_", StringComparison.OrdinalIgnoreCase))
+            {
+                var mcpResult = await _mcpTools.InvokeAsync(toolId, arguments, GetSettingsForToolExecution(), cancellationToken).ConfigureAwait(false);
+                return new AgentToolExecutionResult(true, TrimResult(mcpResult), string.Empty);
+            }
+
             var result = toolId switch
             {
                 "system_summary" => _diagnostics.BuildSystemReport(_diagnostics.GetSystemSnapshot()),
@@ -74,6 +104,15 @@ public sealed class AgentToolExecutor
                 "text_base64_decode" => FormatTextResult(_text.Base64Decode(GetString(arguments, "text"))),
                 "text_url_decode" => _text.UrlDecode(GetString(arguments, "text")),
                 "clipboard_search" => BuildClipboardSearch(arguments),
+                "file_read" => await ReadFileAsync(arguments, cancellationToken).ConfigureAwait(false),
+                "file_list" => ListFiles(arguments),
+                "file_search" => await SearchFilesAsync(arguments, cancellationToken).ConfigureAwait(false),
+                "file_write" => await WriteFileAsync(arguments, cancellationToken).ConfigureAwait(false),
+                "file_patch" => await PatchFileAsync(arguments, cancellationToken).ConfigureAwait(false),
+                "file_delete_recycle" => FormatActionResult(await DeleteFileToRecycleAsync(arguments, cancellationToken).ConfigureAwait(false)),
+                "shell_run" => await RunShellAsync(arguments, cancellationToken).ConfigureAwait(false),
+                "web_search" => await SearchWebAsync(arguments, cancellationToken).ConfigureAwait(false),
+                "web_fetch" => await FetchWebAsync(arguments, cancellationToken).ConfigureAwait(false),
                 "open_windows_settings" => OpenWindowsSettings(arguments),
                 "flush_dns" => FormatActionResult(_hosts.FlushDns()),
                 "save_hosts" => FormatHostsSaveResult(await _hosts.SaveAsync(GetString(arguments, "content"), cancellationToken).ConfigureAwait(false)),
@@ -87,9 +126,31 @@ public sealed class AgentToolExecutor
 
             return new AgentToolExecutionResult(true, TrimResult(result), string.Empty);
         }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or IOException or UnauthorizedAccessException or JsonException)
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or IOException or UnauthorizedAccessException or JsonException or HttpRequestException or TaskCanceledException or NotSupportedException or TimeoutException)
         {
             return new AgentToolExecutionResult(false, string.Empty, ex.Message);
+        }
+    }
+
+    public bool IsTrustedToolCall(AgentToolDescriptor descriptor, JsonElement arguments, AgentSettings settings)
+    {
+        if (settings.ActionMode != AgentActionMode.AutoWithWhitelist)
+        {
+            return false;
+        }
+
+        try
+        {
+            return descriptor.Id switch
+            {
+                "file_write" or "file_patch" => IsTrustedPath(GetString(arguments, "path"), settings.TrustedDirectories),
+                "shell_run" => IsWhitelistedCommand(GetString(arguments, "command"), settings.ShellCommandWhitelist),
+                _ => false
+            };
+        }
+        catch (ArgumentException)
+        {
+            return false;
         }
     }
 
@@ -155,6 +216,260 @@ public sealed class AgentToolExecutor
             $"{i.Id}. [{i.Kind}] {i.Preview} · {i.CreatedUtc:yyyy-MM-dd HH:mm:ss}"));
     }
 
+    private async Task<string> ReadFileAsync(JsonElement arguments, CancellationToken cancellationToken)
+    {
+        var path = NormalizeExistingFile(GetString(arguments, "path"));
+        var maxBytes = Math.Clamp(GetOptionalInt(arguments, "maxBytes") ?? 64 * 1024, 1, 256 * 1024);
+        var info = new FileInfo(path);
+        if (info.Length > maxBytes)
+        {
+            return $"文件过大，仅允许读取 {maxBytes} 字节以内。当前大小: {info.Length} 字节。";
+        }
+
+        var text = await File.ReadAllTextAsync(path, cancellationToken).ConfigureAwait(false);
+        return $"路径: {path}{Environment.NewLine}大小: {info.Length} 字节{Environment.NewLine}{Environment.NewLine}{text}";
+    }
+
+    private string ListFiles(JsonElement arguments)
+    {
+        var path = NormalizeExistingDirectory(GetString(arguments, "path"));
+        var pattern = GetOptionalString(arguments, "pattern");
+        if (string.IsNullOrWhiteSpace(pattern))
+        {
+            pattern = "*";
+        }
+
+        var recursive = GetOptionalBool(arguments, "recursive") ?? false;
+        var limit = Math.Clamp(GetOptionalInt(arguments, "limit") ?? 100, 1, 500);
+        var option = recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
+        var entries = Directory.EnumerateFileSystemEntries(path, pattern, option)
+            .Take(limit)
+            .Select(p =>
+            {
+                var kind = Directory.Exists(p) ? "dir" : "file";
+                return $"{kind} {p}";
+            })
+            .ToArray();
+
+        return entries.Length == 0
+            ? "未找到文件或文件夹。"
+            : string.Join(Environment.NewLine, entries);
+    }
+
+    private async Task<string> SearchFilesAsync(JsonElement arguments, CancellationToken cancellationToken)
+    {
+        var path = NormalizeExistingDirectory(GetString(arguments, "path"));
+        var query = GetString(arguments, "query");
+        var pattern = GetOptionalString(arguments, "pattern");
+        if (string.IsNullOrWhiteSpace(pattern))
+        {
+            pattern = "*";
+        }
+
+        var recursive = GetOptionalBool(arguments, "recursive") ?? true;
+        var limit = Math.Clamp(GetOptionalInt(arguments, "limit") ?? 50, 1, 200);
+        var option = recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
+        var results = new List<string>();
+
+        foreach (var file in Directory.EnumerateFiles(path, pattern, option))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (results.Count >= limit)
+            {
+                break;
+            }
+
+            var fileName = Path.GetFileName(file);
+            if (fileName.Contains(query, StringComparison.OrdinalIgnoreCase))
+            {
+                results.Add("name " + file);
+                continue;
+            }
+
+            var info = new FileInfo(file);
+            if (info.Length > 512 * 1024)
+            {
+                continue;
+            }
+
+            try
+            {
+                var text = await File.ReadAllTextAsync(file, cancellationToken).ConfigureAwait(false);
+                var index = text.IndexOf(query, StringComparison.OrdinalIgnoreCase);
+                if (index >= 0)
+                {
+                    var start = Math.Max(0, index - 80);
+                    var length = Math.Min(text.Length - start, query.Length + 160);
+                    var snippet = text.Substring(start, length).ReplaceLineEndings(" ");
+                    results.Add($"content {file}: {snippet}");
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or DecoderFallbackException)
+            {
+                // Skip unreadable or binary-looking files during search.
+            }
+        }
+
+        return results.Count == 0
+            ? "未找到匹配内容。"
+            : string.Join(Environment.NewLine, results);
+    }
+
+    private async Task<string> WriteFileAsync(JsonElement arguments, CancellationToken cancellationToken)
+    {
+        var path = NormalizeWritablePath(GetString(arguments, "path"));
+        var content = GetOptionalString(arguments, "content");
+        var append = GetOptionalBool(arguments, "append") ?? false;
+        var directory = Path.GetDirectoryName(path);
+        if (!string.IsNullOrWhiteSpace(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        if (append)
+        {
+            await File.AppendAllTextAsync(path, content, cancellationToken).ConfigureAwait(false);
+            return "已追加写入文件: " + path;
+        }
+
+        await File.WriteAllTextAsync(path, content, cancellationToken).ConfigureAwait(false);
+        return "已写入文件: " + path;
+    }
+
+    private async Task<string> PatchFileAsync(JsonElement arguments, CancellationToken cancellationToken)
+    {
+        var path = NormalizeExistingFile(GetString(arguments, "path"));
+        var oldText = GetString(arguments, "oldText");
+        var newText = GetOptionalString(arguments, "newText");
+        var text = await File.ReadAllTextAsync(path, cancellationToken).ConfigureAwait(false);
+        var index = text.IndexOf(oldText, StringComparison.Ordinal);
+        if (index < 0)
+        {
+            throw new ArgumentException("未找到 oldText，未修改文件。");
+        }
+
+        if (text.IndexOf(oldText, index + oldText.Length, StringComparison.Ordinal) >= 0)
+        {
+            throw new ArgumentException("oldText 出现多次，请提供更精确的文本。");
+        }
+
+        var updated = text.Replace(oldText, newText, StringComparison.Ordinal);
+        await File.WriteAllTextAsync(path, updated, cancellationToken).ConfigureAwait(false);
+        return "已替换文件文本: " + path;
+    }
+
+    private async Task<ToolActionResult> DeleteFileToRecycleAsync(JsonElement arguments, CancellationToken cancellationToken)
+    {
+        var path = GetString(arguments, "path");
+        var isDirectory = Directory.Exists(path);
+        if (!isDirectory && !File.Exists(path))
+        {
+            throw new ArgumentException("路径不存在: " + path);
+        }
+
+        return await _fileLocks.DeleteToRecycleBinAsync(path, isDirectory, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<string> RunShellAsync(JsonElement arguments, CancellationToken cancellationToken)
+    {
+        var command = GetString(arguments, "command");
+        var workingDirectory = GetOptionalString(arguments, "workingDirectory");
+        if (!string.IsNullOrWhiteSpace(workingDirectory))
+        {
+            workingDirectory = NormalizeExistingDirectory(workingDirectory);
+        }
+
+        var timeoutSeconds = Math.Clamp(GetOptionalInt(arguments, "timeoutSeconds") ?? 30, 1, 120);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
+
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = "powershell.exe",
+            Arguments = "-NoProfile -ExecutionPolicy Bypass -Command " + QuotePowerShellArgument(command),
+            WorkingDirectory = string.IsNullOrWhiteSpace(workingDirectory) ? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) : workingDirectory,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8
+        };
+
+        using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("无法启动 PowerShell。");
+        var outputTask = process.StandardOutput.ReadToEndAsync(timeout.Token);
+        var errorTask = process.StandardError.ReadToEndAsync(timeout.Token);
+        try
+        {
+            await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            TryKill(process);
+            throw new TimeoutException("Shell 命令执行超时。");
+        }
+
+        var output = await outputTask.ConfigureAwait(false);
+        var error = await errorTask.ConfigureAwait(false);
+        return "ExitCode: " + process.ExitCode + Environment.NewLine +
+            "Output:" + Environment.NewLine +
+            EmptyFallback(output) + Environment.NewLine +
+            "Error:" + Environment.NewLine +
+            EmptyFallback(error);
+    }
+
+    private async Task<string> SearchWebAsync(JsonElement arguments, CancellationToken cancellationToken)
+    {
+        var query = GetString(arguments, "query");
+        var limit = Math.Clamp(GetOptionalInt(arguments, "limit") ?? 5, 1, 10);
+        var settings = GetSettingsForToolExecution();
+        if (string.IsNullOrWhiteSpace(settings.SearchApiKey))
+        {
+            throw new InvalidOperationException("未配置 Web Search API Key。");
+        }
+
+        return settings.SearchProvider == AgentSearchProvider.Tavily
+            ? await SearchTavilyAsync(query, limit, settings.SearchApiKey, cancellationToken).ConfigureAwait(false)
+            : await SearchBraveAsync(query, limit, settings.SearchApiKey, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<string> FetchWebAsync(JsonElement arguments, CancellationToken cancellationToken)
+    {
+        var url = GetString(arguments, "url");
+        var maxBytes = Math.Clamp(GetOptionalInt(arguments, "maxBytes") ?? 128 * 1024, 1, 512 * 1024);
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)
+            || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        {
+            throw new ArgumentException("只允许读取 http/https URL。");
+        }
+
+        using var response = await _http.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        using var memory = new MemoryStream();
+        var buffer = new byte[8192];
+        var total = 0;
+        while (true)
+        {
+            var read = await stream.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken).ConfigureAwait(false);
+            if (read == 0)
+            {
+                break;
+            }
+
+            total += read;
+            if (total > maxBytes)
+            {
+                break;
+            }
+
+            memory.Write(buffer, 0, read);
+        }
+
+        var text = Encoding.UTF8.GetString(memory.ToArray());
+        return $"URL: {uri}{Environment.NewLine}{StripMarkup(text)}";
+    }
+
     private static string OpenWindowsSettings(JsonElement arguments)
     {
         var uri = GetString(arguments, "uri");
@@ -204,6 +519,195 @@ public sealed class AgentToolExecutor
         var result = _diagnostics.KillPortOwner(entry);
         return result.Success ? result.Message : "失败: " + result.Message;
     }
+
+    private async Task<string> SearchBraveAsync(string query, int limit, string apiKey, CancellationToken cancellationToken)
+    {
+        var uri = new Uri("https://api.search.brave.com/res/v1/web/search?q=" + Uri.EscapeDataString(query) + "&count=" + limit.ToString(CultureInfo.InvariantCulture));
+        using var request = new HttpRequestMessage(HttpMethod.Get, uri);
+        request.Headers.Add("X-Subscription-Token", apiKey);
+        request.Headers.UserAgent.ParseAdd("EdgeKit/1.0");
+        using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
+        if (!document.RootElement.TryGetProperty("web", out var web)
+            || !web.TryGetProperty("results", out var results)
+            || results.ValueKind != JsonValueKind.Array)
+        {
+            return "未找到搜索结果。";
+        }
+
+        return FormatSearchResults(results.EnumerateArray().Take(limit).Select(item => new WebSearchItem(
+            GetPropertyString(item, "title"),
+            GetPropertyString(item, "url"),
+            GetPropertyString(item, "description"))));
+    }
+
+    private async Task<string> SearchTavilyAsync(string query, int limit, string apiKey, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, "https://api.tavily.com/search");
+        request.Content = new StringContent(JsonSerializer.Serialize(new
+        {
+            api_key = apiKey,
+            query,
+            max_results = limit,
+            search_depth = "basic"
+        }), Encoding.UTF8, "application/json");
+        using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
+        if (!document.RootElement.TryGetProperty("results", out var results)
+            || results.ValueKind != JsonValueKind.Array)
+        {
+            return "未找到搜索结果。";
+        }
+
+        return FormatSearchResults(results.EnumerateArray().Take(limit).Select(item => new WebSearchItem(
+            GetPropertyString(item, "title"),
+            GetPropertyString(item, "url"),
+            GetPropertyString(item, "content"))));
+    }
+
+    private AgentSettings GetSettingsForToolExecution()
+    {
+        var searchKey = string.Empty;
+        try
+        {
+            searchKey = SecretProtector.Unprotect(_settings.AiSearchApiKeyEncrypted);
+        }
+        catch
+        {
+            searchKey = string.Empty;
+        }
+
+        return new AgentSettings(
+            _settings.AiEnabled,
+            _settings.AiBaseUrl,
+            _settings.AiModel,
+            string.Empty,
+            _settings.AiApiKeyPreview,
+            _settings.AiTemperature,
+            _settings.AiDefaultMode,
+            _settings.AiActionMode,
+            _settings.AiAllowClipboardTools,
+            _settings.AiEnableFileTools,
+            _settings.AiEnableShellTools,
+            _settings.AiEnableWebTools,
+            _settings.AiEnableMcpTools,
+            _settings.AiSearchProvider,
+            searchKey,
+            _settings.AiSearchApiKeyPreview,
+            _settings.AiTrustedDirectories,
+            _settings.AiShellCommandWhitelist,
+            _settings.AiMcpServersJson);
+    }
+
+    private static string FormatSearchResults(IEnumerable<WebSearchItem> items)
+    {
+        var lines = items
+            .Where(i => !string.IsNullOrWhiteSpace(i.Url))
+            .Select((i, index) =>
+                $"{index + 1}. {EmptyFallback(i.Title)}{Environment.NewLine}{i.Url}{Environment.NewLine}{EmptyFallback(i.Snippet)}")
+            .ToArray();
+        return lines.Length == 0 ? "未找到搜索结果。" : string.Join(Environment.NewLine + Environment.NewLine, lines);
+    }
+
+    private static string NormalizeExistingFile(string path)
+    {
+        var fullPath = Path.GetFullPath(Environment.ExpandEnvironmentVariables(path));
+        if (!File.Exists(fullPath))
+        {
+            throw new ArgumentException("文件不存在: " + fullPath);
+        }
+
+        return fullPath;
+    }
+
+    private static string NormalizeExistingDirectory(string path)
+    {
+        var fullPath = Path.GetFullPath(Environment.ExpandEnvironmentVariables(path));
+        if (!Directory.Exists(fullPath))
+        {
+            throw new ArgumentException("目录不存在: " + fullPath);
+        }
+
+        return fullPath;
+    }
+
+    private static string NormalizeWritablePath(string path)
+        => Path.GetFullPath(Environment.ExpandEnvironmentVariables(path));
+
+    private static bool IsTrustedPath(string path, string trustedDirectories)
+    {
+        var fullPath = NormalizeWritablePath(path);
+        foreach (var root in SplitLines(trustedDirectories))
+        {
+            var fullRoot = Path.GetFullPath(Environment.ExpandEnvironmentVariables(root)).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            if (fullPath.Equals(fullRoot, StringComparison.OrdinalIgnoreCase)
+                || fullPath.StartsWith(fullRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+                || fullPath.StartsWith(fullRoot + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsWhitelistedCommand(string command, string whitelist)
+    {
+        var normalized = NormalizeCommand(command);
+        return SplitLines(whitelist)
+            .Select(NormalizeCommand)
+            .Where(prefix => prefix.Length > 0)
+            .Any(prefix => normalized.Equals(prefix, StringComparison.OrdinalIgnoreCase)
+                || normalized.StartsWith(prefix + " ", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string NormalizeCommand(string value)
+        => Regex.Replace(value.Trim(), "\\s+", " ");
+
+    private static IReadOnlyList<string> SplitLines(string value)
+        => (value ?? string.Empty)
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace('\r', '\n')
+            .Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+
+    private static string QuotePowerShellArgument(string command)
+        => "'" + command.Replace("'", "''", StringComparison.Ordinal) + "'";
+
+    private static void TryKill(Process process)
+    {
+        try
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+            }
+        }
+        catch
+        {
+            // Best effort cleanup after timeout.
+        }
+    }
+
+    private static string StripMarkup(string value)
+    {
+        var text = Regex.Replace(value, "<script[\\s\\S]*?</script>", " ", RegexOptions.IgnoreCase);
+        text = Regex.Replace(text, "<style[\\s\\S]*?</style>", " ", RegexOptions.IgnoreCase);
+        text = Regex.Replace(text, "<[^>]+>", " ");
+        text = WebUtility.HtmlDecode(text);
+        return Regex.Replace(text, "\\s+", " ").Trim();
+    }
+
+    private static string GetPropertyString(JsonElement element, string name)
+        => element.ValueKind == JsonValueKind.Object
+            && element.TryGetProperty(name, out var property)
+            && property.ValueKind != JsonValueKind.Null
+            ? property.ToString()
+            : string.Empty;
+
+    private static string EmptyFallback(string value)
+        => string.IsNullOrWhiteSpace(value) ? "无" : value.Trim();
 
     private static string FormatTextResult(TextToolResult result)
         => result.IsSuccess ? result.Output : "失败: " + result.Message;
@@ -309,6 +813,8 @@ public sealed class AgentToolExecutor
 
     private static string TrimResult(string value)
         => value.Length <= 4000 ? value : value[..4000] + Environment.NewLine + "...";
+
+    private sealed record WebSearchItem(string Title, string Url, string Snippet);
 }
 
 public sealed record AgentToolExecutionResult(bool Success, string Result, string Error);

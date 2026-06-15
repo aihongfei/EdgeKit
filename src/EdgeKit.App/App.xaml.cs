@@ -188,8 +188,13 @@ public partial class App : Application
         services.AddSingleton<FileLockService>();
         services.AddSingleton<ImageProcessingService>();
         services.AddSingleton<TextProcessingService>();
+        services.AddSingleton(new HttpClient
+        {
+            Timeout = TimeSpan.FromSeconds(30)
+        });
         services.AddSingleton<AgentToolRegistry>();
         services.AddSingleton<IAgentToolRegistry>(sp => sp.GetRequiredService<AgentToolRegistry>());
+        services.AddSingleton<McpToolService>();
         services.AddSingleton<AgentToolExecutor>();
         services.AddSingleton<IAgentService, AgentService>();
 
