@@ -106,7 +106,7 @@ public sealed class AgentService : IAgentService
         _settings.AiBaseUrl = settings.BaseUrl;
         _settings.AiModel = settings.Model;
         _settings.AiTemperature = settings.Temperature;
-        _settings.AiDefaultMode = settings.DefaultMode;
+        _settings.AiDefaultMode = AgentConversationMode.Chat;
         _settings.AiActionMode = settings.ActionMode;
         _settings.AiAllowClipboardTools = settings.AllowClipboardTools;
 
@@ -172,20 +172,13 @@ public sealed class AgentService : IAgentService
     public AgentConversation CreateConversation(AgentConversationMode mode)
     {
         var settings = GetSettings();
-        var title = mode switch
-        {
-            AgentConversationMode.Translate => "翻译会话",
-            AgentConversationMode.WindowsConfig => "Windows 配置",
-            _ => "新对话"
-        };
-
-        return _repository.CreateConversation(title, mode, settings.Model);
+        return _repository.CreateConversation("新对话", AgentConversationMode.Chat, settings.Model);
     }
 
     public void UpdateConversation(long id, string title, AgentConversationMode mode)
     {
         var settings = GetSettings();
-        _repository.UpdateConversation(id, string.IsNullOrWhiteSpace(title) ? "未命名会话" : title.Trim(), mode, settings.Model);
+        _repository.UpdateConversation(id, string.IsNullOrWhiteSpace(title) ? "未命名会话" : title.Trim(), AgentConversationMode.Chat, settings.Model);
     }
 
     public void ArchiveConversation(long id, bool archived)
@@ -193,6 +186,32 @@ public sealed class AgentService : IAgentService
 
     public void DeleteConversation(long id)
         => _repository.DeleteConversation(id);
+
+    public async Task TryGenerateConversationTitleAsync(long id, string firstUserMessage, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(firstUserMessage))
+        {
+            return;
+        }
+
+        var detail = _repository.GetConversation(id);
+        if (detail is null || !IsDefaultConversationTitle(detail.Conversation.Title))
+        {
+            return;
+        }
+
+        var title = await GenerateConversationTitleAsync(firstUserMessage, cancellationToken).ConfigureAwait(false);
+        title = NormalizeConversationTitle(title);
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            title = BuildFallbackConversationTitle(firstUserMessage);
+        }
+
+        if (!string.IsNullOrWhiteSpace(title))
+        {
+            _repository.UpdateConversation(id, title, AgentConversationMode.Chat, GetSettings().Model);
+        }
+    }
 
     public async Task<AgentSendResult> SendAsync(long conversationId, string message, CancellationToken cancellationToken = default)
     {
@@ -225,12 +244,12 @@ public sealed class AgentService : IAgentService
 
         try
         {
-            var agent = await BuildAgentAsync(settings, detail.Conversation.Mode, cancellationToken).ConfigureAwait(false);
+            var agent = await BuildAgentAsync(settings, AgentConversationMode.Chat, cancellationToken).ConfigureAwait(false);
             var session = await CreateSessionAsync(agent, detail.Conversation, detail.Messages, cancellationToken).ConfigureAwait(false);
             var response = await agent.RunAsync(
                 message.Trim(),
                 session,
-                BuildRunOptions(settings, detail.Conversation.Mode),
+                BuildRunOptions(settings, AgentConversationMode.Chat),
                 cancellationToken).ConfigureAwait(false);
             if (_pendingApprovalCall is not null)
             {
@@ -352,12 +371,12 @@ public sealed class AgentService : IAgentService
             _pendingApprovalCall = null;
             _toolCallsByTurnSignature.Clear();
 
-            var agent = await BuildAgentAsync(settings, detail.Conversation.Mode, cancellationToken).ConfigureAwait(false);
+            var agent = await BuildAgentAsync(settings, AgentConversationMode.Chat, cancellationToken).ConfigureAwait(false);
             var session = await CreateSessionAsync(agent, detail.Conversation, detail.Messages, cancellationToken).ConfigureAwait(false);
             await foreach (var update in agent.RunStreamingAsync(
                     trimmedMessage,
                     session,
-                    BuildRunOptions(settings, detail.Conversation.Mode),
+                    BuildRunOptions(settings, AgentConversationMode.Chat),
                     cancellationToken).ConfigureAwait(false))
             {
                 var delta = update.Text;
@@ -654,6 +673,7 @@ public sealed class AgentService : IAgentService
         }
 
         AgentMessage? assistantMessage = null;
+        var responseText = new StringBuilder();
         var lockHeld = false;
         try
         {
@@ -672,24 +692,31 @@ public sealed class AgentService : IAgentService
             _pendingApprovalCall = null;
             _toolCallsByTurnSignature.Clear();
 
-            var agent = await BuildAgentAsync(settings, detail.Conversation.Mode, cancellationToken).ConfigureAwait(false);
+            var agent = await BuildAgentAsync(settings, AgentConversationMode.Chat, cancellationToken).ConfigureAwait(false);
             var session = await CreateSessionAsync(agent, detail.Conversation, detail.Messages, cancellationToken).ConfigureAwait(false);
             var prompt =
                 $"工具 {call.ToolName} 已执行完成。请基于以下结果继续完成用户上一条任务；" +
                 "如果还需要调用工具可以继续调用。完成后用中文简洁说明结果，不要要求用户手动执行你能通过工具完成的步骤。\n" +
                 call.ResultSummary;
-            var response = await agent.RunAsync(
-                prompt,
-                session,
-                BuildRunOptions(settings, detail.Conversation.Mode),
-                cancellationToken).ConfigureAwait(false);
+            await foreach (var update in agent.RunStreamingAsync(
+                    prompt,
+                    session,
+                    BuildRunOptions(settings, AgentConversationMode.Chat),
+                    cancellationToken).ConfigureAwait(false))
+            {
+                if (!string.IsNullOrEmpty(update.Text))
+                {
+                    responseText.Append(update.Text);
+                }
+            }
+
             if (_pendingApprovalCall is not null)
             {
-                assistantMessage = MarkAssistantWaitingForToolApproval(assistantMessage);
+                assistantMessage = MarkAssistantWaitingForToolApproval(assistantMessage, responseText.ToString());
                 return new AgentSendResult(true, null, assistantMessage, GetToolCalls(conversationId), string.Empty);
             }
 
-            var assistantText = string.IsNullOrWhiteSpace(response.Text) ? "工具已执行完成。" : response.Text.Trim();
+            var assistantText = responseText.Length == 0 ? "工具已执行完成。" : responseText.ToString().Trim();
             _repository.UpdateMessage(assistantMessage.Id, assistantText, AgentMessageStatus.Complete);
             assistantMessage = assistantMessage with
             {
@@ -705,7 +732,7 @@ public sealed class AgentService : IAgentService
         {
             if (assistantMessage is not null)
             {
-                assistantMessage = MarkAssistantWaitingForToolApproval(assistantMessage);
+                assistantMessage = MarkAssistantWaitingForToolApproval(assistantMessage, responseText.ToString());
             }
 
             return new AgentSendResult(true, null, assistantMessage, GetToolCalls(conversationId), string.Empty);
@@ -1159,6 +1186,83 @@ public sealed class AgentService : IAgentService
         }
 
         return null;
+    }
+
+    private async Task<string> GenerateConversationTitleAsync(string firstUserMessage, CancellationToken cancellationToken)
+    {
+        var settings = GetSettings();
+        if (ValidateSettings(settings) is not null)
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            var options = new OpenAIClientOptions
+            {
+                Endpoint = new Uri(settings.BaseUrl)
+            };
+            var nativeClient = new ChatClient(settings.Model, new ApiKeyCredential(settings.ApiKey), options);
+            var client = nativeClient.AsIChatClient();
+            var response = await client.GetResponseAsync(
+                [
+                    new Microsoft.Extensions.AI.ChatMessage(
+                        ChatRole.System,
+                        "你只负责给对话生成标题。标题必须是中文，4 到 16 个字，不要标点、引号、编号或解释。"),
+                    new Microsoft.Extensions.AI.ChatMessage(
+                        ChatRole.User,
+                        "用户第一条消息：" + Environment.NewLine + firstUserMessage.Trim())
+                ],
+                new ChatOptions
+                {
+                    ModelId = settings.Model,
+                    Temperature = 0.2f
+                },
+                cancellationToken).ConfigureAwait(false);
+            return response.Text ?? string.Empty;
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    private static bool IsDefaultConversationTitle(string title)
+        => string.IsNullOrWhiteSpace(title)
+            || string.Equals(title.Trim(), "新对话", StringComparison.Ordinal)
+            || string.Equals(title.Trim(), "翻译会话", StringComparison.Ordinal)
+            || string.Equals(title.Trim(), "Windows 配置", StringComparison.Ordinal);
+
+    private static string NormalizeConversationTitle(string title)
+    {
+        var normalized = title.Trim()
+            .Trim('"', '\'', '“', '”', '‘', '’', '《', '》')
+            .Replace("\r", string.Empty, StringComparison.Ordinal)
+            .Replace("\n", string.Empty, StringComparison.Ordinal);
+
+        normalized = new string(normalized.Where(c => !char.IsControl(c)).ToArray()).Trim();
+        if (normalized.EndsWith("。", StringComparison.Ordinal)
+            || normalized.EndsWith(".", StringComparison.Ordinal)
+            || normalized.EndsWith("！", StringComparison.Ordinal)
+            || normalized.EndsWith("!", StringComparison.Ordinal)
+            || normalized.EndsWith("？", StringComparison.Ordinal)
+            || normalized.EndsWith("?", StringComparison.Ordinal))
+        {
+            normalized = normalized[..^1].Trim();
+        }
+
+        return normalized.Length <= 16 ? normalized : normalized[..16];
+    }
+
+    private static string BuildFallbackConversationTitle(string firstUserMessage)
+    {
+        var title = NormalizeConversationTitle(firstUserMessage);
+        if (title.Length >= 4)
+        {
+            return title;
+        }
+
+        return string.IsNullOrWhiteSpace(title) ? "新对话" : title;
     }
 
     private static bool IsAgentCallException(Exception exception)

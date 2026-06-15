@@ -242,6 +242,7 @@ public partial class App : Application
     private void OnUnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
     {
         Log.Error(e.Exception, "Unhandled UI exception: {Message}", e.Message);
+        e.Handled = true;
     }
 
     private static void OnDomainUnhandledException(object sender, System.UnhandledExceptionEventArgs e)

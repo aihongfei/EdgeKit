@@ -13,6 +13,8 @@ namespace EdgeKit.App.Views;
 
 public sealed partial class AgentChatPage : Page
 {
+    private const int StatusAutoCloseDelayMs = 2500;
+
     private readonly ObservableCollection<AgentTimelineItemViewModel> _timeline = new();
     private readonly HashSet<long> _toolActionsInProgress = new();
 
@@ -21,7 +23,9 @@ public sealed partial class AgentChatPage : Page
     private bool _loading;
     private bool _settingsLoading;
     private bool _sending;
+    private bool _conversationDeleteDialogOpen;
     private AgentTimelineItemViewModel? _streamingAssistantItem;
+    private CancellationTokenSource? _statusAutoCloseCts;
 
     public AgentChatPage()
     {
@@ -37,7 +41,6 @@ public sealed partial class AgentChatPage : Page
         {
             _agent = parameter.AgentService;
             _agent.Changed += OnAgentChanged;
-            SelectMode(_agent.GetSettings().DefaultMode);
             LoadAgentSettings();
             LoadConversations();
             LoadConversationDetail();
@@ -51,6 +54,8 @@ public sealed partial class AgentChatPage : Page
         {
             _agent.Changed -= OnAgentChanged;
         }
+
+        _statusAutoCloseCts?.Cancel();
     }
 
     private void OnAgentChanged(object? sender, EventArgs e)
@@ -116,7 +121,6 @@ public sealed partial class AgentChatPage : Page
         }
 
         RebuildTimeline(detail);
-        SelectMode(detail.Conversation.Mode);
         ScrollMessagesToEnd(force: true);
     }
 
@@ -139,7 +143,6 @@ public sealed partial class AgentChatPage : Page
         }
 
         UpsertToolCalls(detail.ToolCalls);
-        SelectMode(detail.Conversation.Mode);
         ScrollMessagesToEnd();
     }
 
@@ -188,23 +191,6 @@ public sealed partial class AgentChatPage : Page
         LoadConversationDetail();
     }
 
-    private void OnModeChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (_loading || _agent is null || _selectedConversationId <= 0)
-        {
-            return;
-        }
-
-        var detail = _agent.GetConversation(_selectedConversationId);
-        if (detail is null)
-        {
-            return;
-        }
-
-        _agent.UpdateConversation(_selectedConversationId, detail.Conversation.Title, GetSelectedMode());
-        LoadConversations(keepSelection: true);
-    }
-
     private void OnNewConversationClick(object sender, RoutedEventArgs e)
     {
         if (_agent is null || _sending)
@@ -212,12 +198,76 @@ public sealed partial class AgentChatPage : Page
             return;
         }
 
-        var conversation = _agent.CreateConversation(GetSelectedMode());
+        var conversation = _agent.CreateConversation(AgentConversationMode.Chat);
         _selectedConversationId = conversation.Id;
         LoadConversations(keepSelection: true);
         LoadConversationDetail();
         PromptBox.Focus(FocusState.Programmatic);
     }
+
+    private async void OnDeleteConversationClick(object sender, RoutedEventArgs e)
+    {
+        if (_agent is null || _sending || _conversationDeleteDialogOpen || (sender as FrameworkElement)?.Tag is not long id)
+        {
+            return;
+        }
+
+        var button = sender as Button;
+        _conversationDeleteDialogOpen = true;
+        if (button is not null)
+        {
+            button.IsEnabled = false;
+        }
+
+        try
+        {
+            if (ConversationList.ItemsSource is IEnumerable<AgentConversationViewModel> items
+                && items.FirstOrDefault(i => i.Id == id) is { } item)
+            {
+                var dialog = new ContentDialog
+                {
+                    XamlRoot = XamlRoot,
+                    Title = "删除会话",
+                    Content = $"确定删除「{item.Title}」？此操作会删除会话记录和工具调用记录。",
+                    PrimaryButtonText = "删除",
+                    CloseButtonText = "取消",
+                    DefaultButton = ContentDialogButton.Close
+                };
+
+                if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+                {
+                    return;
+                }
+            }
+
+            _agent.DeleteConversation(id);
+            if (_selectedConversationId == id)
+            {
+                _selectedConversationId = 0;
+                _timeline.Clear();
+            }
+
+            LoadConversations();
+            LoadConversationDetail();
+            PromptBox.Focus(FocusState.Programmatic);
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Agent conversation delete failed");
+            ShowStatus("删除失败", ex.Message, InfoBarSeverity.Error);
+        }
+        finally
+        {
+            _conversationDeleteDialogOpen = false;
+            if (button is not null)
+            {
+                button.IsEnabled = true;
+            }
+        }
+    }
+
+    private void OnConversationDeletePointerPressed(object sender, PointerRoutedEventArgs e)
+        => e.Handled = true;
 
     private async void OnSendClick(object sender, RoutedEventArgs e)
     {
@@ -251,7 +301,7 @@ public sealed partial class AgentChatPage : Page
 
         if (_selectedConversationId <= 0)
         {
-            var conversation = _agent.CreateConversation(GetSelectedMode());
+            var conversation = _agent.CreateConversation(AgentConversationMode.Chat);
             _selectedConversationId = conversation.Id;
             LoadConversations(keepSelection: true);
         }
@@ -262,6 +312,8 @@ public sealed partial class AgentChatPage : Page
             return;
         }
 
+        var conversationId = _selectedConversationId;
+        var shouldGenerateTitle = ShouldGenerateTitle(conversationId);
         PromptBox.Text = string.Empty;
         SetBusy(true);
         PromptBox.Focus(FocusState.Programmatic);
@@ -269,9 +321,14 @@ public sealed partial class AgentChatPage : Page
 
         try
         {
-            await foreach (var item in _agent.SendStreamingAsync(_selectedConversationId, text))
+            await foreach (var item in _agent.SendStreamingAsync(conversationId, text))
             {
                 await DispatcherQueue.EnqueueAsync(() => ApplyStreamEvent(item));
+            }
+
+            if (shouldGenerateTitle)
+            {
+                ScheduleConversationTitleGeneration(conversationId, text);
             }
         }
         finally
@@ -480,6 +537,28 @@ public sealed partial class AgentChatPage : Page
         ShowStatus(result.Success ? "已拒绝" : "拒绝失败", result.Message, result.Success ? InfoBarSeverity.Informational : InfoBarSeverity.Error);
     }
 
+    private void ScheduleConversationTitleGeneration(long conversationId, string firstUserMessage)
+    {
+        if (_agent is null)
+        {
+            return;
+        }
+
+        var agent = _agent;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await agent.TryGenerateConversationTitleAsync(conversationId, firstUserMessage).ConfigureAwait(false);
+                DispatcherQueue.TryEnqueue(() => LoadConversations(keepSelection: true));
+            }
+            catch (Exception ex)
+            {
+                Log.Debug(ex, "Agent conversation title generation failed");
+            }
+        });
+    }
+
     private void MarkToolCallRunning(long id)
     {
         var existing = _timeline.FirstOrDefault(i => i.ToolCallId == id);
@@ -528,7 +607,6 @@ public sealed partial class AgentChatPage : Page
             ? "未配置 API Key"
             : "已配置 API Key " + settings.ApiKeyPreview;
         AiTemperatureBox.Value = settings.Temperature;
-        SelectAgentMode(AiDefaultModeBox, settings.DefaultMode);
         SelectActionMode(settings.ActionMode);
         AiAllowClipboardToolsSwitch.IsOn = settings.AllowClipboardTools;
         AiEnableFileToolsSwitch.IsOn = settings.EnableFileTools;
@@ -620,7 +698,7 @@ public sealed partial class AgentChatPage : Page
             includeApiKey ? AiApiKeyBox.Password : string.Empty,
             current.ApiKeyPreview,
             double.IsNaN(AiTemperatureBox.Value) ? current.Temperature : AiTemperatureBox.Value,
-            GetSelectedAgentMode(AiDefaultModeBox),
+            AgentConversationMode.Chat,
             GetSelectedActionMode(),
             AiAllowClipboardToolsSwitch.IsOn,
             AiEnableFileToolsSwitch.IsOn,
@@ -654,50 +732,6 @@ public sealed partial class AgentChatPage : Page
         }
     }
 
-    private AgentConversationMode GetSelectedMode()
-    {
-        var tag = (ModeBox.SelectedItem as ComboBoxItem)?.Tag as string;
-        return tag switch
-        {
-            "Translate" => AgentConversationMode.Translate,
-            "WindowsConfig" => AgentConversationMode.WindowsConfig,
-            _ => AgentConversationMode.Chat
-        };
-    }
-
-    private void SelectMode(AgentConversationMode mode)
-    {
-        _loading = true;
-        var tag = mode switch
-        {
-            AgentConversationMode.Translate => "Translate",
-            AgentConversationMode.WindowsConfig => "WindowsConfig",
-            _ => "Chat"
-        };
-
-        foreach (var item in ModeBox.Items.OfType<ComboBoxItem>())
-        {
-            if ((item.Tag as string) == tag)
-            {
-                ModeBox.SelectedItem = item;
-                break;
-            }
-        }
-
-        _loading = false;
-    }
-
-    private static AgentConversationMode GetSelectedAgentMode(ComboBox box)
-    {
-        var tag = (box.SelectedItem as ComboBoxItem)?.Tag as string;
-        return tag switch
-        {
-            "Translate" => AgentConversationMode.Translate,
-            "WindowsConfig" => AgentConversationMode.WindowsConfig,
-            _ => AgentConversationMode.Chat
-        };
-    }
-
     private AgentActionMode GetSelectedActionMode()
     {
         var tag = (AiActionModeBox.SelectedItem as ComboBoxItem)?.Tag as string;
@@ -713,18 +747,6 @@ public sealed partial class AgentChatPage : Page
     {
         var tag = (AiSearchProviderBox.SelectedItem as ComboBoxItem)?.Tag as string;
         return tag == "Tavily" ? AgentSearchProvider.Tavily : AgentSearchProvider.Brave;
-    }
-
-    private static void SelectAgentMode(ComboBox box, AgentConversationMode mode)
-    {
-        var tag = mode switch
-        {
-            AgentConversationMode.Translate => "Translate",
-            AgentConversationMode.WindowsConfig => "WindowsConfig",
-            _ => "Chat"
-        };
-
-        SelectComboTag(box, tag);
     }
 
     private void SelectActionMode(AgentActionMode mode)
@@ -758,15 +780,53 @@ public sealed partial class AgentChatPage : Page
     {
         _sending = busy;
         SendButton.IsEnabled = !busy;
+        ConversationList.IsEnabled = !busy;
     }
 
     private void ShowStatus(string title, string message, InfoBarSeverity severity)
     {
+        _statusAutoCloseCts?.Cancel();
         StatusBar.Title = title;
         StatusBar.Message = message;
         StatusBar.Severity = severity;
         StatusBar.IsOpen = true;
+        if (severity is InfoBarSeverity.Success or InfoBarSeverity.Informational)
+        {
+            ScheduleStatusAutoClose();
+        }
     }
+
+    private void ScheduleStatusAutoClose()
+    {
+        _statusAutoCloseCts = new CancellationTokenSource();
+        var token = _statusAutoCloseCts.Token;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(StatusAutoCloseDelayMs, token).ConfigureAwait(false);
+                if (!token.IsCancellationRequested)
+                {
+                    DispatcherQueue.TryEnqueue(() => StatusBar.IsOpen = false);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        });
+    }
+
+    private bool ShouldGenerateTitle(long conversationId)
+    {
+        var detail = _agent?.GetConversation(conversationId);
+        return detail is not null && IsDefaultConversationTitle(detail.Conversation.Title);
+    }
+
+    private static bool IsDefaultConversationTitle(string title)
+        => string.IsNullOrWhiteSpace(title)
+            || string.Equals(title.Trim(), "新对话", StringComparison.Ordinal)
+            || string.Equals(title.Trim(), "翻译会话", StringComparison.Ordinal)
+            || string.Equals(title.Trim(), "Windows 配置", StringComparison.Ordinal);
 
     private async Task RunSafelyAsync(Func<Task> action)
     {

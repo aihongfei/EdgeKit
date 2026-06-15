@@ -27,11 +27,6 @@
                        Foreground="{ThemeResource EdgeTextBrush}" />
 
             <StackPanel Grid.Row="1" Spacing="8">
-                <ComboBox x:Name="ModeBox" Height="34" SelectionChanged="OnModeChanged">
-                    <ComboBoxItem Content="对话" Tag="Chat" />
-                    <ComboBoxItem Content="翻译" Tag="Translate" />
-                    <ComboBoxItem Content="Windows 配置" Tag="WindowsConfig" />
-                </ComboBox>
                 <Button Content="新建会话" Height="34" Click="OnNewConversationClick" />
             </StackPanel>
 
@@ -40,14 +35,28 @@
                       SelectionChanged="OnConversationSelectionChanged">
                 <ListView.ItemTemplate>
                     <DataTemplate>
-                        <StackPanel Padding="4">
-                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
-                                       Foreground="{ThemeResource EdgeTextBrush}"
-                                       TextTrimming="CharacterEllipsis" />
-                            <TextBlock Text="{Binding Detail}" FontSize="12"
-                                       Foreground="{ThemeResource EdgeMutedBrush}"
-                                       TextTrimming="CharacterEllipsis" />
-                        </StackPanel>
+                        <Grid Padding="4" ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
+                                           Foreground="{ThemeResource EdgeTextBrush}"
+                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{Binding Detail}" FontSize="12"
+                                           Foreground="{ThemeResource EdgeMutedBrush}"
+                                           TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                            <Button Grid.Column="1"
+                                    Content="删除"
+                                    MinWidth="52"
+                                    Padding="8,2"
+                                    VerticalAlignment="Center"
+                                    Tag="{Binding Id}"
+                                    PointerPressed="OnConversationDeletePointerPressed"
+                                    Click="OnDeleteConversationClick" />
+                        </Grid>
                     </DataTemplate>
                 </ListView.ItemTemplate>
             </ListView>
@@ -353,27 +362,6 @@
                                LargeChange="0.5"
                                SpinButtonPlacementMode="Inline"
                                ValueChanged="OnAgentNumberSettingChanged" />
-                </Grid>
-
-                <Grid ColumnSpacing="12">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="190" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel>
-                        <TextBlock Text="默认模式" Foreground="{ThemeResource EdgeTextBrush}" />
-                        <TextBlock Text="新建会话时默认使用的模式"
-                                   FontSize="12"
-                                   Foreground="{ThemeResource EdgeMutedBrush}" />
-                    </StackPanel>
-                    <ComboBox x:Name="AiDefaultModeBox"
-                              Grid.Column="1"
-                              Height="36"
-                              SelectionChanged="OnAgentSelectionSettingChanged">
-                        <ComboBoxItem Content="对话" Tag="Chat" />
-                        <ComboBoxItem Content="翻译" Tag="Translate" />
-                        <ComboBoxItem Content="Windows 配置" Tag="WindowsConfig" />
-                    </ComboBox>
                 </Grid>
 
                 <Grid ColumnSpacing="12">

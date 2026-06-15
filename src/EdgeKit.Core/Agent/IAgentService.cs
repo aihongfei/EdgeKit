@@ -22,6 +22,8 @@ public interface IAgentService
 
     void DeleteConversation(long id);
 
+    Task TryGenerateConversationTitleAsync(long id, string firstUserMessage, CancellationToken cancellationToken = default);
+
     Task<AgentSendResult> SendAsync(long conversationId, string message, CancellationToken cancellationToken = default);
 
     IAsyncEnumerable<AgentStreamEvent> SendStreamingAsync(long conversationId, string message, CancellationToken cancellationToken = default);
