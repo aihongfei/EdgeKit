@@ -386,7 +386,7 @@ public sealed class AgentToolExecutor
         var startInfo = new ProcessStartInfo
         {
             FileName = "powershell.exe",
-            Arguments = "-NoProfile -ExecutionPolicy Bypass -Command " + QuotePowerShellArgument(command),
+            Arguments = "-NoProfile -ExecutionPolicy Bypass -EncodedCommand " + EncodePowerShellCommand(command),
             WorkingDirectory = string.IsNullOrWhiteSpace(workingDirectory) ? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) : workingDirectory,
             UseShellExecute = false,
             CreateNoWindow = true,
@@ -411,11 +411,17 @@ public sealed class AgentToolExecutor
 
         var output = await outputTask.ConfigureAwait(false);
         var error = await errorTask.ConfigureAwait(false);
-        return "ExitCode: " + process.ExitCode + Environment.NewLine +
+        var summary = "ExitCode: " + process.ExitCode + Environment.NewLine +
             "Output:" + Environment.NewLine +
             EmptyFallback(output) + Environment.NewLine +
             "Error:" + Environment.NewLine +
             EmptyFallback(error);
+        if (process.ExitCode != 0)
+        {
+            throw new InvalidOperationException(summary);
+        }
+
+        return summary;
     }
 
     private async Task<string> SearchWebAsync(JsonElement arguments, CancellationToken cancellationToken)
@@ -672,8 +678,11 @@ public sealed class AgentToolExecutor
             .Replace('\r', '\n')
             .Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
 
-    private static string QuotePowerShellArgument(string command)
-        => "'" + command.Replace("'", "''", StringComparison.Ordinal) + "'";
+    private static string EncodePowerShellCommand(string command)
+    {
+        var script = "$ErrorActionPreference = 'Stop'; [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; " + command;
+        return Convert.ToBase64String(Encoding.Unicode.GetBytes(script));
+    }
 
     private static void TryKill(Process process)
     {

@@ -26,13 +26,13 @@ public sealed class McpToolService
             foreach (var tool in tools)
             {
                 var edgeToolId = BuildToolId(server.Name, tool.Name);
-                result.Add(AIFunctionFactory.Create(
-                    (Func<AIFunctionArguments, CancellationToken, Task<string>>)((arguments, token) => invoker(edgeToolId, tool, ToJsonElement(arguments), token)),
-                    new AIFunctionFactoryOptions
-                    {
-                        Name = edgeToolId,
-                        Description = "[MCP:" + server.Name + "] " + tool.Description
-                    }));
+                result.Add(new AgentRuntimeFunction(
+                    edgeToolId,
+                    "[MCP:" + server.Name + "] " + tool.Description,
+                    tool.JsonSchema,
+                    JsonOptions,
+                    (arguments, token) => invoker(edgeToolId, tool, ToJsonElement(arguments), token),
+                    tool.ReturnJsonSchema));
             }
         }
 

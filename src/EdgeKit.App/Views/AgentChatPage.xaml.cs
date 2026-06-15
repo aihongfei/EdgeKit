@@ -14,6 +14,7 @@ namespace EdgeKit.App.Views;
 public sealed partial class AgentChatPage : Page
 {
     private readonly ObservableCollection<AgentTimelineItemViewModel> _timeline = new();
+    private readonly HashSet<long> _toolActionsInProgress = new();
 
     private IAgentService? _agent;
     private long _selectedConversationId;
@@ -39,6 +40,7 @@ public sealed partial class AgentChatPage : Page
             SelectMode(_agent.GetSettings().DefaultMode);
             LoadAgentSettings();
             LoadConversations();
+            LoadConversationDetail();
         }
     }
 
@@ -53,7 +55,7 @@ public sealed partial class AgentChatPage : Page
 
     private void OnAgentChanged(object? sender, EventArgs e)
     {
-        if (_sending)
+        if (_sending || _toolActionsInProgress.Count > 0)
         {
             return;
         }
@@ -62,7 +64,7 @@ public sealed partial class AgentChatPage : Page
         {
             LoadAgentSettings();
             LoadConversations(keepSelection: true);
-            LoadConversationDetail();
+            RefreshConversationDetail();
         });
     }
 
@@ -73,22 +75,30 @@ public sealed partial class AgentChatPage : Page
             return;
         }
 
-        var selected = keepSelection ? _selectedConversationId : 0;
-        var items = _agent.GetConversations()
-            .Select(c => new AgentConversationViewModel(c))
-            .ToList();
+        _loading = true;
+        try
+        {
+            var selected = keepSelection ? _selectedConversationId : 0;
+            var items = _agent.GetConversations()
+                .Select(c => new AgentConversationViewModel(c))
+                .ToList();
 
-        ConversationList.ItemsSource = items;
-        var target = selected == 0 ? items.FirstOrDefault() : items.FirstOrDefault(i => i.Id == selected);
-        if (target is not null)
-        {
-            ConversationList.SelectedItem = target;
-            _selectedConversationId = target.Id;
+            ConversationList.ItemsSource = items;
+            var target = selected == 0 ? items.FirstOrDefault() : items.FirstOrDefault(i => i.Id == selected);
+            if (target is not null)
+            {
+                ConversationList.SelectedItem = target;
+                _selectedConversationId = target.Id;
+            }
+            else
+            {
+                _selectedConversationId = 0;
+                _timeline.Clear();
+            }
         }
-        else
+        finally
         {
-            _selectedConversationId = 0;
-            _timeline.Clear();
+            _loading = false;
         }
     }
 
@@ -106,6 +116,29 @@ public sealed partial class AgentChatPage : Page
         }
 
         RebuildTimeline(detail);
+        SelectMode(detail.Conversation.Mode);
+        ScrollMessagesToEnd(force: true);
+    }
+
+    private void RefreshConversationDetail()
+    {
+        if (_agent is null || _selectedConversationId <= 0)
+        {
+            return;
+        }
+
+        var detail = _agent.GetConversation(_selectedConversationId);
+        if (detail is null)
+        {
+            return;
+        }
+
+        foreach (var message in detail.Messages.Where(m => m.Role != AgentMessageRole.Tool).OrderBy(m => m.CreatedUtc).ThenBy(m => m.Sequence))
+        {
+            UpsertMessage(message);
+        }
+
+        UpsertToolCalls(detail.ToolCalls);
         SelectMode(detail.Conversation.Mode);
         ScrollMessagesToEnd();
     }
@@ -146,7 +179,7 @@ public sealed partial class AgentChatPage : Page
 
     private void OnConversationSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_sending || ConversationList.SelectedItem is not AgentConversationViewModel item)
+        if (_sending || _loading || ConversationList.SelectedItem is not AgentConversationViewModel item)
         {
             return;
         }
@@ -333,7 +366,13 @@ public sealed partial class AgentChatPage : Page
             }
 
             var item = new AgentTimelineItemViewModel(call);
-            var assistantIndex = _streamingAssistantItem is not null
+            var relatedMessage = call.MessageId is long messageId
+                ? _timeline.FirstOrDefault(i => i.MessageId == messageId)
+                : null;
+            var messageIndex = relatedMessage is null ? -1 : _timeline.IndexOf(relatedMessage);
+            var assistantIndex = messageIndex >= 0
+                ? messageIndex
+                : _streamingAssistantItem is not null
                 ? _timeline.IndexOf(_streamingAssistantItem)
                 : -1;
 
@@ -355,13 +394,28 @@ public sealed partial class AgentChatPage : Page
             return;
         }
 
+        if (!_toolActionsInProgress.Add(id))
+        {
+            return;
+        }
+
+        var button = sender as Button;
         try
         {
-            SetBusy(true);
+            if (button is not null)
+            {
+                button.IsEnabled = false;
+            }
+
+            MarkToolCallRunning(id);
             var result = await _agent.ApproveToolCallAsync(id);
+            if (result.ToolCall is not null)
+            {
+                UpsertToolCalls(new[] { result.ToolCall });
+            }
+
             ShowStatus(result.Success ? "工具已执行" : "工具执行失败", result.Message, result.Success ? InfoBarSeverity.Success : InfoBarSeverity.Error);
             LoadConversations(keepSelection: true);
-            LoadConversationDetail();
         }
         catch (Exception ex)
         {
@@ -370,7 +424,13 @@ public sealed partial class AgentChatPage : Page
         }
         finally
         {
-            SetBusy(false);
+            _toolActionsInProgress.Remove(id);
+            if (button is not null)
+            {
+                button.IsEnabled = true;
+            }
+
+            RefreshConversationDetail();
         }
     }
 
@@ -382,8 +442,29 @@ public sealed partial class AgentChatPage : Page
         }
 
         var result = _agent.RejectToolCall(id);
+        if (result.ToolCall is not null)
+        {
+            UpsertToolCalls(new[] { result.ToolCall });
+        }
+
         ShowStatus(result.Success ? "已拒绝" : "拒绝失败", result.Message, result.Success ? InfoBarSeverity.Informational : InfoBarSeverity.Error);
-        LoadConversationDetail();
+    }
+
+    private void MarkToolCallRunning(long id)
+    {
+        var existing = _timeline.FirstOrDefault(i => i.ToolCallId == id);
+        if (existing?.ToolCall is null)
+        {
+            return;
+        }
+
+        existing.UpdateToolCall(existing.ToolCall with
+        {
+            ApprovalStatus = AgentToolApprovalStatus.Approved,
+            ExecutionStatus = AgentToolExecutionStatus.Running,
+            ResultSummary = string.Empty,
+            Error = string.Empty
+        });
     }
 
     private void OnShowSettingsClick(object sender, RoutedEventArgs e)
@@ -687,10 +768,20 @@ public sealed partial class AgentChatPage : Page
     private static bool IsShiftDown()
         => (NativeMethods.GetKeyState((int)VirtualKey.Shift) & unchecked((short)0x8000)) != 0;
 
-    private void ScrollMessagesToEnd()
+    private void ScrollMessagesToEnd(bool force = false)
     {
         var sv = FindScrollViewer(MessageList);
-        sv?.ChangeView(null, sv.ScrollableHeight, null, disableAnimation: false);
+        if (sv is null)
+        {
+            return;
+        }
+
+        if (!force && sv.ScrollableHeight - sv.VerticalOffset > 80)
+        {
+            return;
+        }
+
+        sv?.ChangeView(null, sv.ScrollableHeight, null, disableAnimation: true);
     }
 
     private static ScrollViewer? FindScrollViewer(DependencyObject parent)

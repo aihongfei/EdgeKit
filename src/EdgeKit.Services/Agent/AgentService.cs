@@ -27,6 +27,7 @@ public sealed class AgentService : IAgentService
     private readonly AgentToolRegistry _toolRegistry;
     private readonly AgentToolExecutor _toolExecutor;
     private readonly McpToolService _mcpTools;
+    private readonly SemaphoreSlim _agentRunLock = new(1, 1);
 
     private long _activeConversationId;
     private long _activeAssistantMessageId;
@@ -210,6 +211,7 @@ public sealed class AgentService : IAgentService
         }
 
         var userMessage = _repository.AddMessage(conversationId, AgentMessageRole.User, message.Trim());
+        await _agentRunLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         _activeConversationId = conversationId;
         _activeAssistantMessageId = 0;
         _toolCallsThisTurn = 0;
@@ -243,6 +245,7 @@ public sealed class AgentService : IAgentService
             _activeConversationId = 0;
             _activeAssistantMessageId = 0;
             _toolCallsThisTurn = 0;
+            _agentRunLock.Release();
         }
     }
 
@@ -276,6 +279,7 @@ public sealed class AgentService : IAgentService
         AgentMessage? userMessage = null;
         AgentMessage? assistantMessage = null;
         var lastToolSignature = string.Empty;
+        var lockHeld = false;
 
         try
         {
@@ -307,6 +311,8 @@ public sealed class AgentService : IAgentService
                 new AgentStreamEvent(AgentStreamEventKind.Started, userMessage, assistantMessage, string.Empty, GetToolCalls(conversationId), string.Empty),
                 cancellationToken).ConfigureAwait(false);
 
+            await _agentRunLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+            lockHeld = true;
             _activeConversationId = conversationId;
             _activeAssistantMessageId = assistantMessage.Id;
             _toolCallsThisTurn = 0;
@@ -390,6 +396,11 @@ public sealed class AgentService : IAgentService
             _activeConversationId = 0;
             _activeAssistantMessageId = 0;
             _toolCallsThisTurn = 0;
+            if (lockHeld)
+            {
+                _agentRunLock.Release();
+            }
+
             writer.TryComplete();
         }
     }
@@ -424,14 +435,12 @@ public sealed class AgentService : IAgentService
             result.Success ? AgentMessageStatus.Complete : AgentMessageStatus.Failed,
             result.Error);
 
-        AgentMessage? assistantMessage = null;
         if (result.Success)
         {
-            var followUp = await SendToolFollowUpAsync(call.ConversationId, updated, cancellationToken).ConfigureAwait(false);
-            assistantMessage = followUp.AssistantMessage;
+            ScheduleToolFollowUp(updated);
         }
 
-        return new AgentToolApprovalResult(result.Success, updated, toolMessage, assistantMessage, result.Success ? "工具已执行" : result.Error);
+        return new AgentToolApprovalResult(result.Success, updated, toolMessage, null, result.Success ? "工具已执行" : result.Error);
     }
 
     public AgentToolApprovalResult RejectToolCall(long toolCallId)
@@ -452,6 +461,21 @@ public sealed class AgentService : IAgentService
         return new AgentToolApprovalResult(true, updated, message, null, "已拒绝");
     }
 
+    private void ScheduleToolFollowUp(AgentToolCall call)
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await SendToolFollowUpAsync(call.ConversationId, call, CancellationToken.None).ConfigureAwait(false);
+            }
+            catch
+            {
+                // Follow-up is best effort; the approved tool result is already persisted.
+            }
+        });
+    }
+
     private async Task<AgentSendResult> SendToolFollowUpAsync(
         long conversationId,
         AgentToolCall call,
@@ -464,26 +488,71 @@ public sealed class AgentService : IAgentService
             return new AgentSendResult(false, null, null, Array.Empty<AgentToolCall>(), string.Empty);
         }
 
+        AgentMessage? assistantMessage = null;
+        var lockHeld = false;
         try
         {
+            assistantMessage = _repository.AddMessage(
+                conversationId,
+                AgentMessageRole.Assistant,
+                "正在继续处理工具结果...",
+                AgentMessageStatus.Pending);
+
+            await _agentRunLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+            lockHeld = true;
+            _activeConversationId = conversationId;
+            _activeAssistantMessageId = assistantMessage.Id;
+            _toolCallsThisTurn = 0;
+
             var agent = await BuildAgentAsync(settings, detail.Conversation.Mode, cancellationToken).ConfigureAwait(false);
             var session = await CreateSessionAsync(agent, detail.Conversation, detail.Messages, cancellationToken).ConfigureAwait(false);
-            var prompt = $"工具 {call.ToolName} 已执行完成，请根据以下结果用中文简洁总结，并说明下一步建议：\n{call.ResultSummary}";
+            var prompt =
+                $"工具 {call.ToolName} 已执行完成。请基于以下结果继续完成用户上一条任务；" +
+                "如果还需要调用工具可以继续调用。完成后用中文简洁说明结果，不要要求用户手动执行你能通过工具完成的步骤。\n" +
+                call.ResultSummary;
             var response = await agent.RunAsync(
                 prompt,
                 session,
                 BuildRunOptions(settings, detail.Conversation.Mode),
                 cancellationToken).ConfigureAwait(false);
-            var assistantMessage = _repository.AddMessage(
-                conversationId,
-                AgentMessageRole.Assistant,
-                string.IsNullOrWhiteSpace(response.Text) ? "工具已执行完成。" : response.Text.Trim());
+            var assistantText = string.IsNullOrWhiteSpace(response.Text) ? "工具已执行完成。" : response.Text.Trim();
+            _repository.UpdateMessage(assistantMessage.Id, assistantText, AgentMessageStatus.Complete);
+            assistantMessage = assistantMessage with
+            {
+                Content = assistantText,
+                Status = AgentMessageStatus.Complete,
+                Error = string.Empty
+            };
             await SaveSessionAsync(agent, session, conversationId, cancellationToken).ConfigureAwait(false);
             return new AgentSendResult(true, null, assistantMessage, _repository.GetPendingToolCalls(conversationId), string.Empty);
         }
         catch (Exception ex) when (IsAgentCallException(ex))
         {
+            if (assistantMessage is not null)
+            {
+                _repository.UpdateMessage(assistantMessage.Id, string.Empty, AgentMessageStatus.Failed, ex.Message);
+            }
+
             return new AgentSendResult(false, null, null, _repository.GetPendingToolCalls(conversationId), ex.Message);
+        }
+        catch (Exception ex)
+        {
+            if (assistantMessage is not null)
+            {
+                _repository.UpdateMessage(assistantMessage.Id, string.Empty, AgentMessageStatus.Failed, ex.Message);
+            }
+
+            return new AgentSendResult(false, null, null, _repository.GetPendingToolCalls(conversationId), ex.Message);
+        }
+        finally
+        {
+            _activeConversationId = 0;
+            _activeAssistantMessageId = 0;
+            _toolCallsThisTurn = 0;
+            if (lockHeld)
+            {
+                _agentRunLock.Release();
+            }
         }
     }
 
@@ -579,13 +648,12 @@ public sealed class AgentService : IAgentService
 
         foreach (var descriptor in descriptors)
         {
-            result.Add(AIFunctionFactory.Create(
-                (Func<AIFunctionArguments, CancellationToken, Task<string>>)((arguments, cancellationToken) => InvokeToolAsync(descriptor.Id, ToJsonElement(arguments), cancellationToken)),
-                new AIFunctionFactoryOptions
-                {
-                    Name = descriptor.Id,
-                    Description = descriptor.Description
-                }));
+            result.Add(new AgentRuntimeFunction(
+                descriptor.Id,
+                descriptor.Description,
+                AgentToolSchemas.ForTool(descriptor.Id),
+                JsonOptions,
+                (arguments, cancellationToken) => InvokeToolAsync(descriptor.Id, ToJsonElement(arguments), cancellationToken)));
         }
 
         if (mode != AgentConversationMode.Translate)
