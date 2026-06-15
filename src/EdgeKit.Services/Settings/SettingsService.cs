@@ -1,4 +1,5 @@
 using System.Globalization;
+using EdgeKit.Core.Agent;
 using EdgeKit.Core.Services;
 using EdgeKit.Core.Settings;
 
@@ -131,6 +132,69 @@ public sealed class SettingsService : ISettingsService
         set => SetField(ref _quickLaunchVisibleRows, ClampQuickLaunchVisibleRows(value));
     }
 
+    private bool _aiEnabled;
+    public bool AiEnabled
+    {
+        get => _aiEnabled;
+        set => SetField(ref _aiEnabled, value);
+    }
+
+    private string _aiBaseUrl = "https://api.openai.com/v1";
+    public string AiBaseUrl
+    {
+        get => _aiBaseUrl;
+        set => SetField(ref _aiBaseUrl, NormalizeBaseUrl(value));
+    }
+
+    private string _aiModel = "gpt-4.1-mini";
+    public string AiModel
+    {
+        get => _aiModel;
+        set => SetField(ref _aiModel, NormalizeModel(value));
+    }
+
+    private string _aiApiKeyEncrypted = string.Empty;
+    public string AiApiKeyEncrypted
+    {
+        get => _aiApiKeyEncrypted;
+        set => SetField(ref _aiApiKeyEncrypted, value?.Trim() ?? string.Empty);
+    }
+
+    private string _aiApiKeyPreview = string.Empty;
+    public string AiApiKeyPreview
+    {
+        get => _aiApiKeyPreview;
+        set => SetField(ref _aiApiKeyPreview, value?.Trim() ?? string.Empty);
+    }
+
+    private double _aiTemperature = 0.2;
+    public double AiTemperature
+    {
+        get => _aiTemperature;
+        set => SetField(ref _aiTemperature, ClampTemperature(value));
+    }
+
+    private AgentConversationMode _aiDefaultMode = AgentConversationMode.Chat;
+    public AgentConversationMode AiDefaultMode
+    {
+        get => _aiDefaultMode;
+        set => SetField(ref _aiDefaultMode, value);
+    }
+
+    private AgentActionMode _aiActionMode = AgentActionMode.ConfirmBeforeAction;
+    public AgentActionMode AiActionMode
+    {
+        get => _aiActionMode;
+        set => SetField(ref _aiActionMode, value);
+    }
+
+    private bool _aiAllowClipboardTools;
+    public bool AiAllowClipboardTools
+    {
+        get => _aiAllowClipboardTools;
+        set => SetField(ref _aiAllowClipboardTools, value);
+    }
+
     public void Load()
     {
         var values = _store.LoadAll();
@@ -157,6 +221,15 @@ public sealed class SettingsService : ISettingsService
             _showHomeClipboardHistory);
         _quickLaunchVisibleRows = ClampQuickLaunchVisibleRows(
             GetInt(values, nameof(QuickLaunchVisibleRows), _quickLaunchVisibleRows));
+        _aiEnabled = GetBool(values, nameof(AiEnabled), _aiEnabled);
+        _aiBaseUrl = NormalizeBaseUrl(GetString(values, nameof(AiBaseUrl), _aiBaseUrl));
+        _aiModel = NormalizeModel(GetString(values, nameof(AiModel), _aiModel));
+        _aiApiKeyEncrypted = GetString(values, nameof(AiApiKeyEncrypted), _aiApiKeyEncrypted);
+        _aiApiKeyPreview = GetString(values, nameof(AiApiKeyPreview), _aiApiKeyPreview);
+        _aiTemperature = ClampTemperature(GetDouble(values, nameof(AiTemperature), _aiTemperature));
+        _aiDefaultMode = GetEnum(values, nameof(AiDefaultMode), _aiDefaultMode);
+        _aiActionMode = GetEnum(values, nameof(AiActionMode), _aiActionMode);
+        _aiAllowClipboardTools = GetBool(values, nameof(AiAllowClipboardTools), _aiAllowClipboardTools);
 
         Changed?.Invoke(this, EventArgs.Empty);
     }
@@ -179,6 +252,15 @@ public sealed class SettingsService : ISettingsService
         _store.Set(nameof(RecentToolsVisibleRows), _recentToolsVisibleRows.ToString(CultureInfo.InvariantCulture));
         _store.Set(nameof(ShowHomeClipboardHistory), _showHomeClipboardHistory ? "1" : "0");
         _store.Set(nameof(QuickLaunchVisibleRows), _quickLaunchVisibleRows.ToString(CultureInfo.InvariantCulture));
+        _store.Set(nameof(AiEnabled), _aiEnabled ? "1" : "0");
+        _store.Set(nameof(AiBaseUrl), _aiBaseUrl);
+        _store.Set(nameof(AiModel), _aiModel);
+        _store.Set(nameof(AiApiKeyEncrypted), _aiApiKeyEncrypted);
+        _store.Set(nameof(AiApiKeyPreview), _aiApiKeyPreview);
+        _store.Set(nameof(AiTemperature), _aiTemperature.ToString(CultureInfo.InvariantCulture));
+        _store.Set(nameof(AiDefaultMode), _aiDefaultMode.ToString());
+        _store.Set(nameof(AiActionMode), _aiActionMode.ToString());
+        _store.Set(nameof(AiAllowClipboardTools), _aiAllowClipboardTools ? "1" : "0");
         _store.Save();
 
         Changed?.Invoke(this, EventArgs.Empty);
@@ -201,6 +283,12 @@ public sealed class SettingsService : ISettingsService
             ? parsed
             : fallback;
 
+    private static double GetDouble(IReadOnlyDictionary<string, string> values, string key, double fallback)
+        => values.TryGetValue(key, out var raw)
+            && double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
+            ? parsed
+            : fallback;
+
     private static bool GetBool(IReadOnlyDictionary<string, string> values, string key, bool fallback)
         => values.TryGetValue(key, out var raw) ? raw == "1" : fallback;
 
@@ -219,6 +307,17 @@ public sealed class SettingsService : ISettingsService
     private static string NormalizeHotkeyText(string? value)
         => string.IsNullOrWhiteSpace(value) ? "Ctrl+Alt+K" : value.Trim();
 
+    private static string NormalizeBaseUrl(string? value)
+    {
+        var trimmed = string.IsNullOrWhiteSpace(value)
+            ? "https://api.openai.com/v1"
+            : value.Trim();
+        return trimmed.TrimEnd('/');
+    }
+
+    private static string NormalizeModel(string? value)
+        => string.IsNullOrWhiteSpace(value) ? "gpt-4.1-mini" : value.Trim();
+
     private static EdgeTriggerSides NormalizeTriggerSides(EdgeTriggerSides value)
     {
         var masked = value & EdgeTriggerSides.Both;
@@ -234,4 +333,7 @@ public sealed class SettingsService : ISettingsService
     private static int ClampRecentDisplayLimit(int value) => Math.Clamp(value, 1, 20);
 
     private static int ClampQuickLaunchVisibleRows(int value) => Math.Clamp(value, 1, 4);
+
+    private static double ClampTemperature(double value)
+        => double.IsNaN(value) ? 0.2 : Math.Clamp(value, 0, 2);
 }

@@ -1,4 +1,5 @@
 namespace EdgeKit.Core.Services;
+using EdgeKit.Core.Agent;
 
 /// <summary>单次触发来自的屏幕边缘。</summary>
 public enum EdgeTriggerSide
@@ -71,6 +72,24 @@ public interface ISettingsService
 
     /// <summary>首页快速启动区可见行数。</summary>
     int QuickLaunchVisibleRows { get; set; }
+
+    bool AiEnabled { get; set; }
+
+    string AiBaseUrl { get; set; }
+
+    string AiModel { get; set; }
+
+    string AiApiKeyEncrypted { get; set; }
+
+    string AiApiKeyPreview { get; set; }
+
+    double AiTemperature { get; set; }
+
+    AgentConversationMode AiDefaultMode { get; set; }
+
+    AgentActionMode AiActionMode { get; set; }
+
+    bool AiAllowClipboardTools { get; set; }
 
     /// <summary>加载持久化的设置。</summary>
     void Load();

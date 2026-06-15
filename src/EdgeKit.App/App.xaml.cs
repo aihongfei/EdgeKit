@@ -9,10 +9,13 @@ using EdgeKit.Core.Recent;
 using EdgeKit.Core.Services;
 using EdgeKit.Core.Settings;
 using EdgeKit.Core.Tools;
+using EdgeKit.Core.Agent;
+using EdgeKit.Data.Agent;
 using EdgeKit.Data.Commands;
 using EdgeKit.Data.QuickLaunch;
 using EdgeKit.Data.Recent;
 using EdgeKit.Data.Settings;
+using EdgeKit.Services.Agent;
 using EdgeKit.Services.Settings;
 using EdgeKit.Services.Diagnostics;
 using EdgeKit.Services.Images;
@@ -89,7 +92,8 @@ public partial class App : Application
         var fileLocks = Services.GetRequiredService<FileLockService>();
         var imageTools = Services.GetRequiredService<ImageProcessingService>();
         var textTools = Services.GetRequiredService<TextProcessingService>();
-        var drawerWindow = new DrawerWindow(settings, shellViewModel, recentItems, quickLaunchItems, quickLaunchActions, homeViewModel, windowMonitor, searchCoordinator, appIndex, commandRegistry, commandExecutor, customCommands, clipboardService, clipboardViewModel, systemDiagnostics, hostsFileService, environmentVariables, windowManagement, fileLocks, imageTools, textTools);
+        var agentService = Services.GetRequiredService<IAgentService>();
+        var drawerWindow = new DrawerWindow(settings, shellViewModel, recentItems, quickLaunchItems, quickLaunchActions, homeViewModel, windowMonitor, searchCoordinator, appIndex, commandRegistry, commandExecutor, customCommands, clipboardService, clipboardViewModel, systemDiagnostics, hostsFileService, environmentVariables, windowManagement, fileLocks, imageTools, textTools, agentService);
         drawerWindow.Closed += OnDrawerWindowClosed;
         _drawerWindow = drawerWindow;
 
@@ -163,6 +167,7 @@ public partial class App : Application
         services.AddSingleton<IRecentItemsRepository>(_ => new SqliteRecentItemsRepository(dbPath));
         services.AddSingleton<IQuickLaunchRepository>(_ => new SqliteQuickLaunchRepository(dbPath));
         services.AddSingleton<ICustomCommandRepository>(_ => new SqliteCustomCommandRepository(dbPath));
+        services.AddSingleton<IAgentRepository>(_ => new SqliteAgentRepository(dbPath));
 
         var clipboardImageDir = System.IO.Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -183,6 +188,10 @@ public partial class App : Application
         services.AddSingleton<FileLockService>();
         services.AddSingleton<ImageProcessingService>();
         services.AddSingleton<TextProcessingService>();
+        services.AddSingleton<AgentToolRegistry>();
+        services.AddSingleton<IAgentToolRegistry>(sp => sp.GetRequiredService<AgentToolRegistry>());
+        services.AddSingleton<AgentToolExecutor>();
+        services.AddSingleton<IAgentService, AgentService>();
 
         services.AddSingleton<ISettingsService, SettingsService>();
         services.AddSingleton<IStartupLaunchService, StartupLaunchService>();

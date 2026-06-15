@@ -1,4 +1,5 @@
 using EdgeKit.App.Interaction;
+using EdgeKit.Core.Agent;
 using EdgeKit.Core.Recent;
 using EdgeKit.Core.Services;
 using Microsoft.Extensions.DependencyInjection;
@@ -17,6 +18,7 @@ namespace EdgeKit.App.Views;
 public sealed partial class SettingsPage : Page
 {
     private ISettingsService? _settings;
+    private IAgentService? _agentService;
     private readonly IStartupLaunchService _startupLaunch;
     private bool _isRecordingHotkey;
     private HotkeyRecorder? _hotkeyRecorder;
@@ -36,6 +38,7 @@ public sealed partial class SettingsPage : Page
     {
         InitializeComponent();
         _startupLaunch = App.Services.GetRequiredService<IStartupLaunchService>();
+        _agentService = App.Services.GetService<IAgentService>();
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
@@ -104,6 +107,17 @@ public sealed partial class SettingsPage : Page
         RecentToolsVisibleRowsBox.Value = _settings.RecentToolsVisibleRows;
         ShowHomeClipboardHistorySwitch.IsOn = _settings.ShowHomeClipboardHistory;
         QuickLaunchVisibleRowsBox.Value = _settings.QuickLaunchVisibleRows;
+        AiEnabledSwitch.IsOn = _settings.AiEnabled;
+        AiBaseUrlBox.Text = _settings.AiBaseUrl;
+        AiModelBox.Text = _settings.AiModel;
+        AiApiKeyBox.Password = string.Empty;
+        AiApiKeyHintText.Text = string.IsNullOrWhiteSpace(_settings.AiApiKeyPreview)
+            ? "未配置 API Key"
+            : "已配置 API Key " + _settings.AiApiKeyPreview;
+        AiTemperatureBox.Value = _settings.AiTemperature;
+        SelectAgentMode(AiDefaultModeBox, _settings.AiDefaultMode);
+        SelectActionMode(_settings.AiActionMode);
+        AiAllowClipboardToolsSwitch.IsOn = _settings.AiAllowClipboardTools;
 
         _loading = false;
     }
@@ -560,5 +574,147 @@ public sealed partial class SettingsPage : Page
         // 从全局容器解析仓储，清除全部最近记录。
         var repo = App.Services.GetService<IRecentItemsRepository>();
         repo?.Clear(null);
+    }
+
+    private void OnAiSettingChanged(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        SaveAiSettings(includeApiKey: false);
+    }
+
+    private void OnAiSettingChanged(object sender, SelectionChangedEventArgs e)
+    {
+        SaveAiSettings(includeApiKey: false);
+    }
+
+    private void OnAiTextSettingLostFocus(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        SaveAiSettings(includeApiKey: false);
+    }
+
+    private void OnAiNumberSettingChanged(NumberBox sender, NumberBoxValueChangedEventArgs args)
+    {
+        if (_loading || double.IsNaN(args.NewValue))
+        {
+            return;
+        }
+
+        SaveAiSettings(includeApiKey: false);
+    }
+
+    private void OnAiApiKeyChanged(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        if (_loading || string.IsNullOrWhiteSpace(AiApiKeyBox.Password))
+        {
+            return;
+        }
+
+        SaveAiSettings(includeApiKey: true);
+    }
+
+    private async void OnAiTestClick(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        if (_agentService is null)
+        {
+            return;
+        }
+
+        SaveAiSettings(includeApiKey: !string.IsNullOrWhiteSpace(AiApiKeyBox.Password));
+        AiTestButton.IsEnabled = false;
+        AiStatusBar.IsOpen = false;
+        var result = await _agentService.TestConnectionAsync();
+        AiTestButton.IsEnabled = true;
+        AiStatusBar.Title = result.Success ? "连接成功" : "连接失败";
+        AiStatusBar.Message = result.Message;
+        AiStatusBar.Severity = result.Success ? InfoBarSeverity.Success : InfoBarSeverity.Error;
+        AiStatusBar.IsOpen = true;
+    }
+
+    private void SaveAiSettings(bool includeApiKey)
+    {
+        if (_loading || _settings is null || _agentService is null)
+        {
+            return;
+        }
+
+        var current = _agentService.GetSettings();
+        var apiKey = includeApiKey ? AiApiKeyBox.Password : string.Empty;
+        _agentService.SaveSettings(new AgentSettings(
+            AiEnabledSwitch.IsOn,
+            AiBaseUrlBox.Text,
+            AiModelBox.Text,
+            apiKey,
+            current.ApiKeyPreview,
+            double.IsNaN(AiTemperatureBox.Value) ? current.Temperature : AiTemperatureBox.Value,
+            GetSelectedAgentMode(AiDefaultModeBox),
+            GetSelectedActionMode(),
+            AiAllowClipboardToolsSwitch.IsOn));
+
+        if (includeApiKey)
+        {
+            _loading = true;
+            AiApiKeyBox.Password = string.Empty;
+            AiApiKeyHintText.Text = "已配置 API Key " + _settings.AiApiKeyPreview;
+            _loading = false;
+        }
+    }
+
+    private static AgentConversationMode GetSelectedAgentMode(ComboBox box)
+    {
+        var tag = (box.SelectedItem as ComboBoxItem)?.Tag as string;
+        return tag switch
+        {
+            "Translate" => AgentConversationMode.Translate,
+            "WindowsConfig" => AgentConversationMode.WindowsConfig,
+            _ => AgentConversationMode.Chat
+        };
+    }
+
+    private AgentActionMode GetSelectedActionMode()
+    {
+        var tag = (AiActionModeBox.SelectedItem as ComboBoxItem)?.Tag as string;
+        return tag switch
+        {
+            "SuggestOnly" => AgentActionMode.SuggestOnly,
+            "AutoWithWhitelist" => AgentActionMode.AutoWithWhitelist,
+            _ => AgentActionMode.ConfirmBeforeAction
+        };
+    }
+
+    private static void SelectAgentMode(ComboBox box, AgentConversationMode mode)
+    {
+        var tag = mode switch
+        {
+            AgentConversationMode.Translate => "Translate",
+            AgentConversationMode.WindowsConfig => "WindowsConfig",
+            _ => "Chat"
+        };
+
+        foreach (var item in box.Items.OfType<ComboBoxItem>())
+        {
+            if ((item.Tag as string) == tag)
+            {
+                box.SelectedItem = item;
+                return;
+            }
+        }
+    }
+
+    private void SelectActionMode(AgentActionMode mode)
+    {
+        var tag = mode switch
+        {
+            AgentActionMode.SuggestOnly => "SuggestOnly",
+            AgentActionMode.AutoWithWhitelist => "AutoWithWhitelist",
+            _ => "ConfirmBeforeAction"
+        };
+
+        foreach (var item in AiActionModeBox.Items.OfType<ComboBoxItem>())
+        {
+            if ((item.Tag as string) == tag)
+            {
+                AiActionModeBox.SelectedItem = item;
+                return;
+            }
+        }
     }
 }

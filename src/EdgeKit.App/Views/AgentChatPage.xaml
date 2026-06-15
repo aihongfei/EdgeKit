@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="EdgeKit.App.Views.AgentChatPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    Background="Transparent"
+    RequestedTheme="Dark"
+    mc:Ignorable="d">
+
+    <Grid Padding="16" ColumnSpacing="16">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="220" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <Grid Grid.Column="0" RowSpacing="10">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <TextBlock Text="智能体" FontSize="22" FontWeight="SemiBold"
+                       Foreground="{ThemeResource EdgeTextBrush}" />
+
+            <StackPanel Grid.Row="1" Spacing="8">
+                <ComboBox x:Name="ModeBox" Height="34" SelectionChanged="OnModeChanged">
+                    <ComboBoxItem Content="对话" Tag="Chat" />
+                    <ComboBoxItem Content="翻译" Tag="Translate" />
+                    <ComboBoxItem Content="Windows 配置" Tag="WindowsConfig" />
+                </ComboBox>
+                <Button Content="新建会话" Height="34" Click="OnNewConversationClick" />
+            </StackPanel>
+
+            <ListView x:Name="ConversationList"
+                      Grid.Row="2"
+                      SelectionChanged="OnConversationSelectionChanged">
+                <ListView.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Padding="4">
+                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
+                                       Foreground="{ThemeResource EdgeTextBrush}"
+                                       TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="{Binding Detail}" FontSize="12"
+                                       Foreground="{ThemeResource EdgeMutedBrush}"
+                                       TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+        </Grid>
+
+        <Grid Grid.Column="1" RowSpacing="10">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="170" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <InfoBar x:Name="StatusBar"
+                     IsOpen="False"
+                     IsClosable="True" />
+
+            <ListView x:Name="MessageList" Grid.Row="1">
+                <ListView.ItemTemplate>
+                    <DataTemplate>
+                        <Border BorderBrush="{ThemeResource EdgeLineBrush}"
+                                BorderThickness="1"
+                                CornerRadius="6"
+                                Padding="10"
+                                Margin="0,0,0,8">
+                            <StackPanel Spacing="6">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBlock Text="{Binding RoleText}" FontWeight="SemiBold"
+                                               Foreground="{ThemeResource EdgeTextBrush}" />
+                                    <TextBlock Text="{Binding TimeText}" FontSize="12"
+                                               Foreground="{ThemeResource EdgeMutedBrush}" />
+                                </StackPanel>
+                                <TextBlock Text="{Binding Content}"
+                                           TextWrapping="Wrap"
+                                           IsTextSelectionEnabled="True"
+                                           Foreground="{ThemeResource EdgeTextBrush}" />
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+
+            <Grid Grid.Row="2" RowSpacing="6">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <TextBlock Text="工具调用" FontWeight="SemiBold"
+                           Foreground="{ThemeResource EdgeMutedBrush}" />
+                <ListView x:Name="ToolCallList" Grid.Row="1">
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Padding="8" ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
+                                               Foreground="{ThemeResource EdgeTextBrush}" />
+                                    <TextBlock Text="{Binding Detail}" FontSize="12"
+                                               TextWrapping="Wrap"
+                                               Foreground="{ThemeResource EdgeMutedBrush}" />
+                                </StackPanel>
+                                <Button Grid.Column="1" Content="确认"
+                                        Tag="{Binding Id}"
+                                        IsEnabled="{Binding CanApprove}"
+                                        Click="OnApproveToolClick" />
+                                <Button Grid.Column="2" Content="拒绝"
+                                        Tag="{Binding Id}"
+                                        IsEnabled="{Binding CanApprove}"
+                                        Click="OnRejectToolClick" />
+                            </Grid>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+            </Grid>
+
+            <Grid Grid.Row="3" ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBox x:Name="PromptBox"
+                         MinHeight="42"
+                         AcceptsReturn="True"
+                         TextWrapping="Wrap"
+                         PlaceholderText="输入消息..."
+                         KeyDown="OnPromptKeyDown" />
+                <Button x:Name="SendButton"
+                        Grid.Column="1"
+                        Content="发送"
+                        Width="82"
+                        Click="OnSendClick" />
+            </Grid>
+        </Grid>
+    </Grid>
+</Page>

@@ -145,6 +145,9 @@ public sealed class CommandRegistry
         C("system.filelock", "文件锁定检测", "检测文件或文件夹被哪个进程占用", "\uE8A5", "系统工具",
             CommandKind.BuiltInAction, "navigate:system.filelock", "", 209, false, "file lock", "locked file", "unlocker", "wjzd", "wjzy"),
 
+        C("agent.chat", "打开智能体", "打开 EdgeKit 智能体对话", "\uE8D7", "智能体",
+            CommandKind.BuiltInAction, "navigate:agent.chat", "", 250, false, "ai", "agent", "chat", "assistant", "znt"),
+
         C("shell.desktop", "桌面", "打开桌面文件夹", "\uE80F", "Shell 入口",
             CommandKind.WindowsUri, "shell:Desktop", "", 300, false, "desktop", "zm"),
         C("shell.downloads", "下载", "打开下载文件夹", "\uE896", "Shell 入口",

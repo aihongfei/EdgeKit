@@ -8,6 +8,7 @@ using EdgeKit.Core.Commands;
 using EdgeKit.Core.QuickLaunch;
 using EdgeKit.Core.Recent;
 using EdgeKit.Core.Services;
+using EdgeKit.Core.Agent;
 using EdgeKit.Services.Diagnostics;
 using EdgeKit.Services.Images;
 using EdgeKit.Services.Text;
@@ -63,6 +64,7 @@ public sealed partial class DrawerWindow : Window
     private readonly FileLockService _fileLocks;
     private readonly ImageProcessingService _imageTools;
     private readonly TextProcessingService _textTools;
+    private readonly IAgentService _agentService;
 
     // 抽屉基础宽度（收缩态，物理像素）下限。
     private const int MinDrawerWidth = 360;
@@ -142,7 +144,8 @@ public sealed partial class DrawerWindow : Window
         WindowManagementService windowManagement,
         FileLockService fileLocks,
         ImageProcessingService imageTools,
-        TextProcessingService textTools)
+        TextProcessingService textTools,
+        IAgentService agentService)
     {
         _settings = settings;
         _shellViewModel = shellViewModel;
@@ -165,6 +168,7 @@ public sealed partial class DrawerWindow : Window
         _fileLocks = fileLocks;
         _imageTools = imageTools;
         _textTools = textTools;
+        _agentService = agentService;
         InitializeComponent();
 
         // 用全局快捷键设置初始化搜索框提示。

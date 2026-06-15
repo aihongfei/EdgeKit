@@ -323,6 +323,168 @@
                         Click="OnClearRecentClick" />
             </Grid>
 
+            <!-- AI -->
+            <TextBlock Text="AI / 智能体" FontSize="14" FontWeight="SemiBold"
+                       Foreground="{ThemeResource EdgeMutedBrush}" Margin="0,4,0,0" />
+
+            <InfoBar x:Name="AiStatusBar"
+                     IsOpen="False"
+                     IsClosable="True" />
+
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                    <TextBlock Text="启用智能体" Foreground="{ThemeResource EdgeTextBrush}" />
+                    <TextBlock Text="启用后可在智能体页面使用对话、翻译和 Windows 配置助手"
+                               FontSize="12" Foreground="{ThemeResource EdgeMutedBrush}"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+                <ToggleSwitch x:Name="AiEnabledSwitch" Grid.Column="1"
+                              VerticalAlignment="Center"
+                              Toggled="OnAiSettingChanged" />
+            </Grid>
+
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                    <TextBlock Text="Base URL" Foreground="{ThemeResource EdgeTextBrush}" />
+                    <TextBlock Text="OpenAI 兼容接口地址，例如 https://api.openai.com/v1"
+                               FontSize="12" Foreground="{ThemeResource EdgeMutedBrush}"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+                <TextBox x:Name="AiBaseUrlBox" Grid.Column="1"
+                         Width="260" Height="36" VerticalAlignment="Center"
+                         LostFocus="OnAiTextSettingLostFocus" />
+            </Grid>
+
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                    <TextBlock Text="模型" Foreground="{ThemeResource EdgeTextBrush}" />
+                    <TextBlock Text="模型名称，例如 gpt-4.1-mini 或兼容服务提供的模型 id"
+                               FontSize="12" Foreground="{ThemeResource EdgeMutedBrush}"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+                <TextBox x:Name="AiModelBox" Grid.Column="1"
+                         Width="260" Height="36" VerticalAlignment="Center"
+                         LostFocus="OnAiTextSettingLostFocus" />
+            </Grid>
+
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                    <TextBlock Text="API Key" Foreground="{ThemeResource EdgeTextBrush}" />
+                    <TextBlock x:Name="AiApiKeyHintText"
+                               FontSize="12" Foreground="{ThemeResource EdgeMutedBrush}"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+                <PasswordBox x:Name="AiApiKeyBox" Grid.Column="1"
+                             Width="260" Height="36" VerticalAlignment="Center"
+                             PasswordChanged="OnAiApiKeyChanged" />
+            </Grid>
+
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                    <TextBlock Text="温度" Foreground="{ThemeResource EdgeTextBrush}" />
+                    <TextBlock Text="控制回答发散程度，0 更稳定，2 更发散"
+                               FontSize="12" Foreground="{ThemeResource EdgeMutedBrush}"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+                <NumberBox x:Name="AiTemperatureBox" Grid.Column="1"
+                           Width="190" Height="36" VerticalAlignment="Center"
+                           Minimum="0" Maximum="2" SmallChange="0.1" LargeChange="0.5"
+                           SpinButtonPlacementMode="Inline"
+                           ValueChanged="OnAiNumberSettingChanged" />
+            </Grid>
+
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                    <TextBlock Text="默认模式" Foreground="{ThemeResource EdgeTextBrush}" />
+                    <TextBlock Text="新建智能体会话时默认使用的模式"
+                               FontSize="12" Foreground="{ThemeResource EdgeMutedBrush}"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+                <ComboBox x:Name="AiDefaultModeBox" Grid.Column="1"
+                          Width="190" Height="36" VerticalAlignment="Center"
+                          SelectionChanged="OnAiSettingChanged">
+                    <ComboBoxItem Content="对话" Tag="Chat" />
+                    <ComboBoxItem Content="翻译" Tag="Translate" />
+                    <ComboBoxItem Content="Windows 配置" Tag="WindowsConfig" />
+                </ComboBox>
+            </Grid>
+
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                    <TextBlock Text="动作模式" Foreground="{ThemeResource EdgeTextBrush}" />
+                    <TextBlock Text="控制智能体是否能生成或执行工具调用"
+                               FontSize="12" Foreground="{ThemeResource EdgeMutedBrush}"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+                <ComboBox x:Name="AiActionModeBox" Grid.Column="1"
+                          Width="190" Height="36" VerticalAlignment="Center"
+                          SelectionChanged="OnAiSettingChanged">
+                    <ComboBoxItem Content="只给建议" Tag="SuggestOnly" />
+                    <ComboBoxItem Content="确认后执行" Tag="ConfirmBeforeAction" />
+                    <ComboBoxItem Content="白名单自动" Tag="AutoWithWhitelist" />
+                </ComboBox>
+            </Grid>
+
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                    <TextBlock Text="允许读取剪贴板历史" Foreground="{ThemeResource EdgeTextBrush}" />
+                    <TextBlock Text="开启后智能体可调用剪贴板历史查询工具"
+                               FontSize="12" Foreground="{ThemeResource EdgeMutedBrush}"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+                <ToggleSwitch x:Name="AiAllowClipboardToolsSwitch" Grid.Column="1"
+                              VerticalAlignment="Center"
+                              Toggled="OnAiSettingChanged" />
+            </Grid>
+
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                    <TextBlock Text="连接测试" Foreground="{ThemeResource EdgeTextBrush}" />
+                    <TextBlock Text="使用当前配置向模型发送一次轻量测试请求"
+                               FontSize="12" Foreground="{ThemeResource EdgeMutedBrush}"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+                <Button x:Name="AiTestButton" Grid.Column="1" Content="测试"
+                        Height="36" VerticalAlignment="Center"
+                        Click="OnAiTestClick" />
+            </Grid>
+
         </StackPanel>
     </ScrollViewer>
 </Page>

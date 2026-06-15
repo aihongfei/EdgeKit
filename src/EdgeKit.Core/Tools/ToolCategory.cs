@@ -18,6 +18,9 @@ public enum ToolCategory
     /// <summary>命令面板。</summary>
     Command,
 
+    /// <summary>智能体。</summary>
+    Agent,
+
     /// <summary>文本工具。</summary>
     Text,
 
@@ -49,6 +52,7 @@ public static class ToolCategoryInfo
         ToolCategory.Clipboard => "剪贴板",
         ToolCategory.Snippets => "常用片段",
         ToolCategory.Command => "命令面板",
+        ToolCategory.Agent => "智能体",
         ToolCategory.Text => "文本工具",
         ToolCategory.Json => "JSON 工具",
         ToolCategory.Developer => "开发者工具",
@@ -65,6 +69,7 @@ public static class ToolCategoryInfo
         ToolCategory.Clipboard => "\uE8C8",
         ToolCategory.Snippets => "\uE7C3",
         ToolCategory.Command => "\uE756",
+        ToolCategory.Agent => "\uE8D7",
         ToolCategory.Text => "\uE8E9",
         ToolCategory.Json => "\uE943",
         ToolCategory.Developer => "\uEC7A",

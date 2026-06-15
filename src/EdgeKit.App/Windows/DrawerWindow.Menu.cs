@@ -82,6 +82,10 @@ public sealed partial class DrawerWindow
                     ExecuteCommandAsync,
                     HideDrawer));
         }
+        else if (toolId == "agent.chat")
+        {
+            ContentFrame.Navigate(typeof(AgentChatPage), new AgentChatPageParameter(_agentService));
+        }
         else if (tool.Category == ToolCategory.Text)
         {
             ContentFrame.Navigate(typeof(TextToolsPage), new TextToolsPageParameter(toolId, _textTools, _hwnd));
