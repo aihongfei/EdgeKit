@@ -360,7 +360,7 @@ public sealed class AgentToolExecutor
 
     private async Task<ToolActionResult> DeleteFileToRecycleAsync(JsonElement arguments, CancellationToken cancellationToken)
     {
-        var path = GetString(arguments, "path");
+        var path = NormalizeWritablePath(GetString(arguments, "path"));
         var isDirectory = Directory.Exists(path);
         if (!isDirectory && !File.Exists(path))
         {
@@ -619,7 +619,7 @@ public sealed class AgentToolExecutor
 
     private static string NormalizeExistingFile(string path)
     {
-        var fullPath = Path.GetFullPath(Environment.ExpandEnvironmentVariables(path));
+        var fullPath = NormalizeWritablePath(path);
         if (!File.Exists(fullPath))
         {
             throw new ArgumentException("文件不存在: " + fullPath);
@@ -630,7 +630,7 @@ public sealed class AgentToolExecutor
 
     private static string NormalizeExistingDirectory(string path)
     {
-        var fullPath = Path.GetFullPath(Environment.ExpandEnvironmentVariables(path));
+        var fullPath = NormalizeWritablePath(path);
         if (!Directory.Exists(fullPath))
         {
             throw new ArgumentException("目录不存在: " + fullPath);
@@ -640,14 +640,67 @@ public sealed class AgentToolExecutor
     }
 
     private static string NormalizeWritablePath(string path)
-        => Path.GetFullPath(Environment.ExpandEnvironmentVariables(path));
+        => Path.GetFullPath(ExpandUserPath(path));
+
+    private static string ExpandUserPath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            throw new ArgumentException("路径不能为空。");
+        }
+
+        var expanded = Environment.ExpandEnvironmentVariables(path.Trim().Trim('"'));
+        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (expanded == "~")
+        {
+            return userProfile;
+        }
+
+        if (expanded.StartsWith("~/", StringComparison.Ordinal) || expanded.StartsWith("~\\", StringComparison.Ordinal))
+        {
+            return Path.Combine(userProfile, expanded[2..]);
+        }
+
+        var alias = ResolveKnownFolderAlias(expanded);
+        return alias ?? expanded;
+    }
+
+    private static string? ResolveKnownFolderAlias(string path)
+    {
+        var normalized = path.Replace('/', Path.DirectorySeparatorChar);
+        var parts = normalized.Split(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }, 2, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0 || Path.IsPathRooted(normalized))
+        {
+            return null;
+        }
+
+        var root = parts[0];
+        var knownFolder = root switch
+        {
+            "桌面" or "desktop" or "Desktop" => Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
+            "文档" or "我的文档" or "documents" or "Documents" => Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+            "下载" or "downloads" or "Downloads" => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads"),
+            "图片" or "pictures" or "Pictures" => Environment.GetFolderPath(Environment.SpecialFolder.MyPictures),
+            "音乐" or "music" or "Music" => Environment.GetFolderPath(Environment.SpecialFolder.MyMusic),
+            "视频" or "videos" or "Videos" => Environment.GetFolderPath(Environment.SpecialFolder.MyVideos),
+            "用户目录" or "home" or "Home" => Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            _ => string.Empty
+        };
+
+        if (string.IsNullOrWhiteSpace(knownFolder))
+        {
+            return null;
+        }
+
+        return parts.Length == 1 ? knownFolder : Path.Combine(knownFolder, parts[1]);
+    }
 
     private static bool IsTrustedPath(string path, string trustedDirectories)
     {
         var fullPath = NormalizeWritablePath(path);
         foreach (var root in SplitLines(trustedDirectories))
         {
-            var fullRoot = Path.GetFullPath(Environment.ExpandEnvironmentVariables(root)).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var fullRoot = NormalizeWritablePath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
             if (fullPath.Equals(fullRoot, StringComparison.OrdinalIgnoreCase)
                 || fullPath.StartsWith(fullRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
                 || fullPath.StartsWith(fullRoot + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))

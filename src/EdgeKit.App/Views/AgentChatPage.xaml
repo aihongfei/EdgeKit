@@ -137,6 +137,7 @@
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="Auto" />
                                             </Grid.ColumnDefinitions>
                                             <TextBlock Text="{Binding ToolTitle}"
                                                        FontWeight="SemiBold"
@@ -148,6 +149,24 @@
                                                        FontSize="12"
                                                        VerticalAlignment="Center"
                                                        Foreground="{ThemeResource EdgeMutedBrush}" />
+                                            <StackPanel Grid.Column="2"
+                                                        Orientation="Horizontal"
+                                                        Spacing="6"
+                                                        Visibility="{Binding ToolActionVisibility}">
+                                                <Button Content="确认"
+                                                        MinWidth="56"
+                                                        Padding="10,4"
+                                                        Style="{ThemeResource AccentButtonStyle}"
+                                                        Tag="{Binding ToolCallId}"
+                                                        PointerPressed="OnToolActionPointerPressed"
+                                                        Click="OnApproveToolClick" />
+                                                <Button Content="拒绝"
+                                                        MinWidth="56"
+                                                        Padding="10,4"
+                                                        Tag="{Binding ToolCallId}"
+                                                        PointerPressed="OnToolActionPointerPressed"
+                                                        Click="OnRejectToolClick" />
+                                            </StackPanel>
                                         </Grid>
                                     </Expander.Header>
                                     <StackPanel Padding="4,4,4,8" Spacing="10">
@@ -160,18 +179,6 @@
                                                    TextWrapping="Wrap"
                                                    IsTextSelectionEnabled="True"
                                                    Foreground="{ThemeResource EdgeMutedBrush}" />
-                                        <StackPanel Orientation="Horizontal"
-                                                    HorizontalAlignment="Right"
-                                                    Spacing="8"
-                                                    Visibility="{Binding ToolActionVisibility}">
-                                            <Button Content="确认"
-                                                    Style="{ThemeResource AccentButtonStyle}"
-                                                    Tag="{Binding ToolCallId}"
-                                                    Click="OnApproveToolClick" />
-                                            <Button Content="拒绝"
-                                                    Tag="{Binding ToolCallId}"
-                                                    Click="OnRejectToolClick" />
-                                        </StackPanel>
                                     </StackPanel>
                                 </Expander>
                             </Border>

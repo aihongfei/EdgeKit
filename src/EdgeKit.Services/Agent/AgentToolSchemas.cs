@@ -42,12 +42,12 @@ internal static class AgentToolSchemas
         ["text_base64_decode"] = [Text("text", "Base64 text to decode.")],
         ["text_url_decode"] = [Text("text", "URL-encoded text to decode.")],
         ["clipboard_search"] = [Text("query", "Optional clipboard search text."), Integer("limit", "Maximum number of items.")],
-        ["file_read"] = [Text("path", "Text file path to read."), Integer("maxBytes", "Maximum bytes to read.")],
-        ["file_list"] = [Text("path", "Directory path to list."), Text("pattern", "File search pattern, for example *.txt."), Boolean("recursive", "Whether to include subdirectories."), Integer("limit", "Maximum number of entries.")],
-        ["file_search"] = [Text("path", "Directory path to search."), Text("query", "File name or text query."), Text("pattern", "File search pattern, for example *.txt."), Boolean("recursive", "Whether to include subdirectories."), Integer("limit", "Maximum number of matches.")],
-        ["file_write"] = [Text("path", "Target file path."), Text("content", "Text content to write."), Boolean("append", "Append instead of overwrite.")],
-        ["file_patch"] = [Text("path", "Target text file path."), Text("oldText", "Exact text to replace."), Text("newText", "Replacement text.")],
-        ["file_delete_recycle"] = [Text("path", "File or directory path to move to recycle bin.")],
+        ["file_read"] = [Text("path", PathDescription("text file path to read")), Integer("maxBytes", "Maximum bytes to read.")],
+        ["file_list"] = [Text("path", PathDescription("directory path to list")), Text("pattern", "File search pattern, for example *.txt."), Boolean("recursive", "Whether to include subdirectories."), Integer("limit", "Maximum number of entries.")],
+        ["file_search"] = [Text("path", PathDescription("directory path to search")), Text("query", "File name or text query."), Text("pattern", "File search pattern, for example *.txt."), Boolean("recursive", "Whether to include subdirectories."), Integer("limit", "Maximum number of matches.")],
+        ["file_write"] = [Text("path", PathDescription("target file path")), Text("content", "Text content to write."), Boolean("append", "Append instead of overwrite.")],
+        ["file_patch"] = [Text("path", PathDescription("target text file path")), Text("oldText", "Exact text to replace."), Text("newText", "Replacement text.")],
+        ["file_delete_recycle"] = [Text("path", PathDescription("file or directory path to move to recycle bin"))],
         ["shell_run"] = [Text("command", "PowerShell command to execute."), Text("workingDirectory", "Optional working directory."), Integer("timeoutSeconds", "Timeout in seconds.")],
         ["web_search"] = [Text("query", "Search query."), Integer("limit", "Maximum number of search results.")],
         ["web_fetch"] = [Text("url", "HTTP or HTTPS URL to fetch."), Integer("maxBytes", "Maximum bytes to read.")],
@@ -90,6 +90,9 @@ internal static class AgentToolSchemas
             ["type"] = "string",
             ["description"] = description
         });
+
+    private static string PathDescription(string purpose)
+        => purpose + ". Supports absolute paths, %USERPROFILE%, ~, and common user-folder aliases such as Desktop/Documents/Downloads or 桌面/文档/下载.";
 
     private static ToolProperty Integer(string name, string description)
         => new(name, new Dictionary<string, object?>

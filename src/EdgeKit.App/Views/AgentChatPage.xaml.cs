@@ -342,16 +342,31 @@ public sealed partial class AgentChatPage : Page
         if (existing is not null)
         {
             existing.UpdateMessage(message);
+            CollapseCompletedToolsForMessage(message);
             return existing;
         }
 
         var item = new AgentTimelineItemViewModel(message)
         {
             IsStreaming = message.Status == AgentMessageStatus.Pending,
-            StreamedContent = message.Status == AgentMessageStatus.Pending ? string.Empty : message.Content
+            StreamedContent = message.Content
         };
         _timeline.Add(item);
+        CollapseCompletedToolsForMessage(message);
         return item;
+    }
+
+    private void CollapseCompletedToolsForMessage(AgentMessage message)
+    {
+        if (message.Role != AgentMessageRole.Assistant || message.Status != AgentMessageStatus.Complete)
+        {
+            return;
+        }
+
+        foreach (var tool in _timeline.Where(i => i.ToolCall?.MessageId == message.Id))
+        {
+            tool.CollapseCompletedToolCall();
+        }
     }
 
     private void UpsertToolCalls(IReadOnlyList<AgentToolCall> calls)
@@ -414,6 +429,11 @@ public sealed partial class AgentChatPage : Page
                 UpsertToolCalls(new[] { result.ToolCall });
             }
 
+            if (result.AssistantMessage is not null)
+            {
+                UpsertMessage(result.AssistantMessage);
+            }
+
             ShowStatus(result.Success ? "工具已执行" : "工具执行失败", result.Message, result.Success ? InfoBarSeverity.Success : InfoBarSeverity.Error);
             LoadConversations(keepSelection: true);
         }
@@ -434,6 +454,9 @@ public sealed partial class AgentChatPage : Page
         }
     }
 
+    private void OnToolActionPointerPressed(object sender, PointerRoutedEventArgs e)
+        => e.Handled = true;
+
     private void OnRejectToolClick(object sender, RoutedEventArgs e)
     {
         if (_agent is null || (sender as FrameworkElement)?.Tag is not long id)
@@ -445,6 +468,11 @@ public sealed partial class AgentChatPage : Page
         if (result.ToolCall is not null)
         {
             UpsertToolCalls(new[] { result.ToolCall });
+        }
+
+        if (result.AssistantMessage is not null)
+        {
+            UpsertMessage(result.AssistantMessage);
         }
 
         ShowStatus(result.Success ? "已拒绝" : "拒绝失败", result.Message, result.Success ? InfoBarSeverity.Informational : InfoBarSeverity.Error);

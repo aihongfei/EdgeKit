@@ -18,6 +18,7 @@ public sealed class AgentTimelineItemViewModel : INotifyPropertyChanged
     private string _streamedContent = string.Empty;
     private bool _isStreaming;
     private bool _isExpanded;
+    private bool _hasUserToggledExpansion;
 
     public AgentTimelineItemViewModel(AgentMessage message)
     {
@@ -27,6 +28,7 @@ public sealed class AgentTimelineItemViewModel : INotifyPropertyChanged
     public AgentTimelineItemViewModel(AgentToolCall toolCall)
     {
         _toolCall = toolCall;
+        _isExpanded = ShouldAutoExpand(toolCall);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -149,6 +151,7 @@ public sealed class AgentTimelineItemViewModel : INotifyPropertyChanged
             }
 
             _isExpanded = value;
+            _hasUserToggledExpansion = true;
             Raise(nameof(IsExpanded));
         }
     }
@@ -193,7 +196,9 @@ public sealed class AgentTimelineItemViewModel : INotifyPropertyChanged
 
     public void UpdateToolCall(AgentToolCall toolCall)
     {
+        var previous = _toolCall;
         _toolCall = toolCall;
+        ApplyAutomaticExpansion(previous, toolCall);
         RaiseAll();
     }
 
@@ -242,6 +247,49 @@ public sealed class AgentTimelineItemViewModel : INotifyPropertyChanged
         _ => _toolCall?.ExecutionStatus.ToString() ?? string.Empty
     };
 
+    private static bool ShouldAutoExpand(AgentToolCall toolCall)
+        => toolCall.ApprovalStatus == AgentToolApprovalStatus.Pending
+            || toolCall.ExecutionStatus is AgentToolExecutionStatus.Pending
+                or AgentToolExecutionStatus.Running
+                or AgentToolExecutionStatus.Failed;
+
+    private void ApplyAutomaticExpansion(AgentToolCall? previous, AgentToolCall current)
+    {
+        if (current.ApprovalStatus == AgentToolApprovalStatus.Pending
+            || current.ExecutionStatus is AgentToolExecutionStatus.Pending or AgentToolExecutionStatus.Running or AgentToolExecutionStatus.Failed)
+        {
+            SetExpandedFromState(true);
+        }
+    }
+
+    public void CollapseCompletedToolCall()
+    {
+        if (_toolCall is null
+            || _toolCall.ApprovalStatus == AgentToolApprovalStatus.Pending
+            || _toolCall.ExecutionStatus is not (AgentToolExecutionStatus.Succeeded or AgentToolExecutionStatus.Skipped))
+        {
+            return;
+        }
+
+        SetExpandedFromState(false);
+    }
+
+    private void SetExpandedFromState(bool expanded)
+    {
+        if (!expanded && _hasUserToggledExpansion)
+        {
+            return;
+        }
+
+        if (_isExpanded == expanded)
+        {
+            return;
+        }
+
+        _isExpanded = expanded;
+        Raise(nameof(IsExpanded));
+    }
+
     private void RaiseMessageProperties()
     {
         Raise(nameof(Content));
@@ -272,7 +320,8 @@ public sealed class AgentTimelineItemViewModel : INotifyPropertyChanged
             nameof(ToolStatusText),
             nameof(ToolSummary),
             nameof(ToolDetail),
-            nameof(CanApprove)
+            nameof(CanApprove),
+            nameof(IsExpanded)
         })
         {
             Raise(name);
