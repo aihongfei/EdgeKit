@@ -24,6 +24,8 @@ public interface IAgentService
 
     Task<AgentSendResult> SendAsync(long conversationId, string message, CancellationToken cancellationToken = default);
 
+    IAsyncEnumerable<AgentStreamEvent> SendStreamingAsync(long conversationId, string message, CancellationToken cancellationToken = default);
+
     Task<AgentToolApprovalResult> ApproveToolCallAsync(long toolCallId, CancellationToken cancellationToken = default);
 
     AgentToolApprovalResult RejectToolCall(long toolCallId);

@@ -1,5 +1,8 @@
 using System.ClientModel;
+using System.Runtime.CompilerServices;
+using System.Text;
 using System.Text.Json;
+using System.Threading.Channels;
 using EdgeKit.Core.Agent;
 using EdgeKit.Core.Services;
 using EdgeKit.Services.Settings;
@@ -25,6 +28,7 @@ public sealed class AgentService : IAgentService
     private readonly AgentToolExecutor _toolExecutor;
 
     private long _activeConversationId;
+    private long _activeAssistantMessageId;
     private int _toolCallsThisTurn;
 
     public AgentService(
@@ -169,6 +173,7 @@ public sealed class AgentService : IAgentService
 
         var userMessage = _repository.AddMessage(conversationId, AgentMessageRole.User, message.Trim());
         _activeConversationId = conversationId;
+        _activeAssistantMessageId = 0;
         _toolCallsThisTurn = 0;
 
         try
@@ -198,7 +203,156 @@ public sealed class AgentService : IAgentService
         finally
         {
             _activeConversationId = 0;
+            _activeAssistantMessageId = 0;
             _toolCallsThisTurn = 0;
+        }
+    }
+
+    public async IAsyncEnumerable<AgentStreamEvent> SendStreamingAsync(
+        long conversationId,
+        string message,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        var channel = Channel.CreateUnbounded<AgentStreamEvent>(new UnboundedChannelOptions
+        {
+            SingleReader = true,
+            SingleWriter = true
+        });
+
+        _ = Task.Run(
+            () => ProduceStreamingResponseAsync(conversationId, message, channel.Writer, cancellationToken),
+            CancellationToken.None);
+
+        await foreach (var item in channel.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+        {
+            yield return item;
+        }
+    }
+
+    private async Task ProduceStreamingResponseAsync(
+        long conversationId,
+        string message,
+        ChannelWriter<AgentStreamEvent> writer,
+        CancellationToken cancellationToken)
+    {
+        AgentMessage? userMessage = null;
+        AgentMessage? assistantMessage = null;
+        var lastToolSignature = string.Empty;
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                await writer.WriteAsync(FailedStreamEvent(null, null, conversationId, "请输入消息"), cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
+            var settings = GetSettings();
+            var validation = ValidateSettings(settings);
+            if (validation is not null)
+            {
+                await writer.WriteAsync(FailedStreamEvent(null, null, conversationId, validation), cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
+            var detail = _repository.GetConversation(conversationId);
+            if (detail is null)
+            {
+                await writer.WriteAsync(FailedStreamEvent(null, null, conversationId, "会话不存在"), cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
+            var trimmedMessage = message.Trim();
+            userMessage = _repository.AddMessage(conversationId, AgentMessageRole.User, trimmedMessage);
+            assistantMessage = _repository.AddMessage(conversationId, AgentMessageRole.Assistant, "正在思考...", AgentMessageStatus.Pending);
+            await writer.WriteAsync(
+                new AgentStreamEvent(AgentStreamEventKind.Started, userMessage, assistantMessage, string.Empty, GetToolCalls(conversationId), string.Empty),
+                cancellationToken).ConfigureAwait(false);
+
+            _activeConversationId = conversationId;
+            _activeAssistantMessageId = assistantMessage.Id;
+            _toolCallsThisTurn = 0;
+
+            var agent = BuildAgent(settings, detail.Conversation.Mode);
+            var session = await CreateSessionAsync(agent, detail.Conversation, detail.Messages, cancellationToken).ConfigureAwait(false);
+            var responseText = new StringBuilder();
+
+            await foreach (var update in agent.RunStreamingAsync(
+                    trimmedMessage,
+                    session,
+                    BuildRunOptions(settings, detail.Conversation.Mode),
+                    cancellationToken).ConfigureAwait(false))
+            {
+                var delta = update.Text;
+                if (!string.IsNullOrEmpty(delta))
+                {
+                    responseText.Append(delta);
+                    await writer.WriteAsync(
+                        new AgentStreamEvent(AgentStreamEventKind.Delta, userMessage, assistantMessage, delta, GetToolCalls(conversationId), string.Empty),
+                        cancellationToken).ConfigureAwait(false);
+                }
+
+                lastToolSignature = await WriteToolChangesIfNeededAsync(
+                    writer,
+                    conversationId,
+                    userMessage,
+                    assistantMessage,
+                    lastToolSignature,
+                    cancellationToken).ConfigureAwait(false);
+            }
+
+            var assistantText = responseText.Length == 0
+                ? "(模型没有返回文本内容)"
+                : responseText.ToString().Trim();
+            _repository.UpdateMessage(assistantMessage.Id, assistantText, AgentMessageStatus.Complete);
+            var completedAssistant = assistantMessage with
+            {
+                Content = assistantText,
+                Status = AgentMessageStatus.Complete,
+                Error = string.Empty
+            };
+            await SaveSessionAsync(agent, session, conversationId, cancellationToken).ConfigureAwait(false);
+
+            await writer.WriteAsync(
+                new AgentStreamEvent(AgentStreamEventKind.Completed, userMessage, completedAssistant, string.Empty, GetToolCalls(conversationId), string.Empty),
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (IsAgentCallException(ex) || ex is OperationCanceledException)
+        {
+            if (assistantMessage is not null)
+            {
+                _repository.UpdateMessage(assistantMessage.Id, string.Empty, AgentMessageStatus.Failed, ex.Message);
+                assistantMessage = assistantMessage with
+                {
+                    Content = string.Empty,
+                    Status = AgentMessageStatus.Failed,
+                    Error = ex.Message
+                };
+            }
+
+            await writer.WriteAsync(FailedStreamEvent(userMessage, assistantMessage, conversationId, ex.Message), CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            if (assistantMessage is not null)
+            {
+                _repository.UpdateMessage(assistantMessage.Id, string.Empty, AgentMessageStatus.Failed, ex.Message);
+                assistantMessage = assistantMessage with
+                {
+                    Content = string.Empty,
+                    Status = AgentMessageStatus.Failed,
+                    Error = ex.Message
+                };
+            }
+
+            await writer.WriteAsync(FailedStreamEvent(userMessage, assistantMessage, conversationId, ex.Message), CancellationToken.None).ConfigureAwait(false);
+        }
+        finally
+        {
+            _activeConversationId = 0;
+            _activeAssistantMessageId = 0;
+            _toolCallsThisTurn = 0;
+            writer.TryComplete();
         }
     }
 
@@ -295,6 +449,53 @@ public sealed class AgentService : IAgentService
         }
     }
 
+    private async Task<string> WriteToolChangesIfNeededAsync(
+        ChannelWriter<AgentStreamEvent> writer,
+        long conversationId,
+        AgentMessage? userMessage,
+        AgentMessage? assistantMessage,
+        string previousSignature,
+        CancellationToken cancellationToken)
+    {
+        var tools = GetToolCalls(conversationId);
+        var signature = BuildToolSignature(tools);
+        if (!string.Equals(signature, previousSignature, StringComparison.Ordinal))
+        {
+            await writer.WriteAsync(
+                new AgentStreamEvent(AgentStreamEventKind.ToolCallsChanged, userMessage, assistantMessage, string.Empty, tools, string.Empty),
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        return signature;
+    }
+
+    private IReadOnlyList<AgentToolCall> GetToolCalls(long conversationId)
+        => _repository.GetConversation(conversationId)?.ToolCalls ?? Array.Empty<AgentToolCall>();
+
+    private static string BuildToolSignature(IReadOnlyList<AgentToolCall> tools)
+        => string.Join(
+            "|",
+            tools.Select(t => string.Join(
+                ":",
+                t.Id.ToString(),
+                t.ApprovalStatus.ToString(),
+                t.ExecutionStatus.ToString(),
+                t.ResultSummary.Length.ToString(),
+                t.Error.Length.ToString())));
+
+    private AgentStreamEvent FailedStreamEvent(
+        AgentMessage? userMessage,
+        AgentMessage? assistantMessage,
+        long conversationId,
+        string error)
+        => new(
+            AgentStreamEventKind.Failed,
+            userMessage,
+            assistantMessage,
+            string.Empty,
+            conversationId > 0 ? GetToolCalls(conversationId) : Array.Empty<AgentToolCall>(),
+            error);
+
     private ChatClientAgent BuildAgent(AgentSettings settings, AgentConversationMode mode)
     {
         var chatClient = CreateChatClient(settings);
@@ -382,7 +583,7 @@ public sealed class AgentService : IAgentService
 
         var call = _repository.AddToolCall(
             _activeConversationId,
-            null,
+            _activeAssistantMessageId > 0 ? _activeAssistantMessageId : null,
             descriptor.Id,
             descriptor.Name,
             descriptor.Risk,

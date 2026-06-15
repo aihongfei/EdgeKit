@@ -56,7 +56,6 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
-                <RowDefinition Height="170" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
@@ -64,83 +63,133 @@
                      IsOpen="False"
                      IsClosable="True" />
 
-            <ListView x:Name="MessageList" Grid.Row="1">
+            <ListView x:Name="MessageList" Grid.Row="1"
+                      SelectionMode="None"
+                      IsItemClickEnabled="False">
+                <ListView.ItemContainerStyle>
+                    <Style TargetType="ListViewItem">
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        <Setter Property="Padding" Value="0" />
+                        <Setter Property="MinHeight" Value="0" />
+                    </Style>
+                </ListView.ItemContainerStyle>
                 <ListView.ItemTemplate>
                     <DataTemplate>
-                        <Border BorderBrush="{ThemeResource EdgeLineBrush}"
-                                BorderThickness="1"
-                                CornerRadius="6"
-                                Padding="10"
-                                Margin="0,0,0,8">
-                            <StackPanel Spacing="6">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <TextBlock Text="{Binding RoleText}" FontWeight="SemiBold"
+                        <Grid Margin="0,0,0,10">
+                            <Border Visibility="{Binding MessageVisibility}"
+                                    HorizontalAlignment="{Binding BubbleAlignment}"
+                                    MaxWidth="640"
+                                    Background="{Binding BubbleBackground}"
+                                    BorderBrush="{Binding BubbleBorderBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="10"
+                                    Padding="12">
+                                <StackPanel Spacing="6">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <TextBlock Text="{Binding RoleText}" FontWeight="SemiBold"
+                                                   Foreground="{ThemeResource EdgeTextBrush}" />
+                                        <TextBlock Text="{Binding TimeText}" FontSize="12"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{ThemeResource EdgeMutedBrush}" />
+                                    </StackPanel>
+
+                                    <StackPanel Orientation="Horizontal"
+                                                Spacing="8"
+                                                Visibility="{Binding LoadingVisibility}">
+                                        <ProgressRing Width="18"
+                                                      Height="18"
+                                                      IsActive="True" />
+                                        <TextBlock Text="正在思考..."
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{ThemeResource EdgeMutedBrush}" />
+                                    </StackPanel>
+
+                                    <TextBlock Text="{Binding Content}"
+                                               Visibility="{Binding ContentVisibility}"
+                                               TextWrapping="Wrap"
+                                               LineHeight="20"
+                                               IsTextSelectionEnabled="True"
                                                Foreground="{ThemeResource EdgeTextBrush}" />
-                                    <TextBlock Text="{Binding TimeText}" FontSize="12"
-                                               Foreground="{ThemeResource EdgeMutedBrush}" />
                                 </StackPanel>
-                                <TextBlock Text="{Binding Content}"
-                                           TextWrapping="Wrap"
-                                           IsTextSelectionEnabled="True"
-                                           Foreground="{ThemeResource EdgeTextBrush}" />
-                            </StackPanel>
-                        </Border>
+                            </Border>
+
+                            <Border Visibility="{Binding ToolVisibility}"
+                                    Background="{ThemeResource EdgeControlBrush}"
+                                    BorderBrush="{ThemeResource EdgeLineBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="10">
+                                <Expander IsExpanded="{Binding IsExpanded, Mode=TwoWay}"
+                                          HorizontalAlignment="Stretch"
+                                          HorizontalContentAlignment="Stretch"
+                                          Background="Transparent"
+                                          CornerRadius="10"
+                                          BorderThickness="0"
+                                          Padding="10,6,6,6">
+                                    <Expander.Header>
+                                        <Grid HorizontalAlignment="Stretch" ColumnSpacing="12">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding ToolTitle}"
+                                                       FontWeight="SemiBold"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       VerticalAlignment="Center"
+                                                       Foreground="{ThemeResource EdgeTextBrush}" />
+                                            <TextBlock Grid.Column="1"
+                                                       Text="{Binding ToolStatusText}"
+                                                       FontSize="12"
+                                                       VerticalAlignment="Center"
+                                                       Foreground="{ThemeResource EdgeMutedBrush}" />
+                                        </Grid>
+                                    </Expander.Header>
+                                    <StackPanel Padding="4,4,4,8" Spacing="10">
+                                        <TextBlock Text="{Binding ToolSummary}"
+                                                   FontSize="12"
+                                                   TextWrapping="Wrap"
+                                                   Foreground="{ThemeResource EdgeMutedBrush}" />
+                                        <TextBlock Text="{Binding ToolDetail}"
+                                                   FontSize="12"
+                                                   TextWrapping="Wrap"
+                                                   IsTextSelectionEnabled="True"
+                                                   Foreground="{ThemeResource EdgeMutedBrush}" />
+                                        <StackPanel Orientation="Horizontal"
+                                                    HorizontalAlignment="Right"
+                                                    Spacing="8"
+                                                    Visibility="{Binding ToolActionVisibility}">
+                                            <Button Content="确认"
+                                                    Style="{ThemeResource AccentButtonStyle}"
+                                                    Tag="{Binding ToolCallId}"
+                                                    Click="OnApproveToolClick" />
+                                            <Button Content="拒绝"
+                                                    Tag="{Binding ToolCallId}"
+                                                    Click="OnRejectToolClick" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Expander>
+                            </Border>
+                        </Grid>
                     </DataTemplate>
                 </ListView.ItemTemplate>
             </ListView>
 
-            <Grid Grid.Row="2" RowSpacing="6">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                </Grid.RowDefinitions>
-                <TextBlock Text="工具调用" FontWeight="SemiBold"
-                           Foreground="{ThemeResource EdgeMutedBrush}" />
-                <ListView x:Name="ToolCallList" Grid.Row="1">
-                    <ListView.ItemTemplate>
-                        <DataTemplate>
-                            <Grid Padding="8" ColumnSpacing="8">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel>
-                                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
-                                               Foreground="{ThemeResource EdgeTextBrush}" />
-                                    <TextBlock Text="{Binding Detail}" FontSize="12"
-                                               TextWrapping="Wrap"
-                                               Foreground="{ThemeResource EdgeMutedBrush}" />
-                                </StackPanel>
-                                <Button Grid.Column="1" Content="确认"
-                                        Tag="{Binding Id}"
-                                        IsEnabled="{Binding CanApprove}"
-                                        Click="OnApproveToolClick" />
-                                <Button Grid.Column="2" Content="拒绝"
-                                        Tag="{Binding Id}"
-                                        IsEnabled="{Binding CanApprove}"
-                                        Click="OnRejectToolClick" />
-                            </Grid>
-                        </DataTemplate>
-                    </ListView.ItemTemplate>
-                </ListView>
-            </Grid>
-
-            <Grid Grid.Row="3" ColumnSpacing="8">
+            <Grid Grid.Row="2" ColumnSpacing="8">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <TextBox x:Name="PromptBox"
                          MinHeight="42"
+                         MaxHeight="160"
                          AcceptsReturn="True"
                          TextWrapping="Wrap"
-                         PlaceholderText="输入消息..."
-                         KeyDown="OnPromptKeyDown" />
+                         PlaceholderText="输入消息，Enter 发送，Shift+Enter 换行" />
                 <Button x:Name="SendButton"
                         Grid.Column="1"
                         Content="发送"
                         Width="82"
+                        VerticalAlignment="Bottom"
+                        Style="{ThemeResource AccentButtonStyle}"
                         Click="OnSendClick" />
             </Grid>
         </Grid>

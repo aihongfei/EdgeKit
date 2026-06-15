@@ -115,6 +115,23 @@ public sealed record AgentSendResult(
     IReadOnlyList<AgentToolCall> ToolCalls,
     string ErrorMessage);
 
+public enum AgentStreamEventKind
+{
+    Started,
+    Delta,
+    ToolCallsChanged,
+    Completed,
+    Failed
+}
+
+public sealed record AgentStreamEvent(
+    AgentStreamEventKind Kind,
+    AgentMessage? UserMessage,
+    AgentMessage? AssistantMessage,
+    string Delta,
+    IReadOnlyList<AgentToolCall> ToolCalls,
+    string ErrorMessage);
+
 public sealed record AgentToolApprovalResult(
     bool Success,
     AgentToolCall? ToolCall,
