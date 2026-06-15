@@ -1,5 +1,6 @@
 using System;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Linq;
 using EdgeKit.Services.Diagnostics;
 using Microsoft.UI.Dispatching;
@@ -21,6 +22,7 @@ public sealed partial class SystemToolsPage : Page
     private readonly ObservableCollection<EnvironmentVariableEntry> _environmentVariables = new();
     private readonly ObservableCollection<EnvironmentPathItem> _environmentPathItems = new();
     private readonly ObservableCollection<ManagedWindowEntry> _windows = new();
+    private readonly ObservableCollection<FileLockEntry> _fileLocks = new();
 
     private readonly DispatcherQueueTimer _toastTimer;
 
@@ -31,6 +33,7 @@ public sealed partial class SystemToolsPage : Page
     private HostsFileSnapshot? _hostsSnapshot;
     private EnvironmentVariableSnapshot? _environmentSnapshot;
     private WindowManagementSnapshot? _windowSnapshot;
+    private FileLockSnapshot? _fileLockSnapshot;
     private EnvironmentVariableEntry? _selectedEnvironmentVariable;
     private ManagedWindowEntry? _selectedWindow;
     private PingProbeResult? _lastPingResult;
@@ -39,6 +42,7 @@ public sealed partial class SystemToolsPage : Page
     private IReadOnlyList<PortEntry> _allPorts = Array.Empty<PortEntry>();
     private IReadOnlyList<EnvironmentVariableEntry> _allEnvironmentVariables = Array.Empty<EnvironmentVariableEntry>();
     private IReadOnlyList<ManagedWindowEntry> _allWindows = Array.Empty<ManagedWindowEntry>();
+    private IReadOnlyList<FileLockEntry> _allFileLocks = Array.Empty<FileLockEntry>();
     private string _selectedTab = "network";
     private int _loadVersion;
     private bool _networkLoaded;
@@ -46,10 +50,12 @@ public sealed partial class SystemToolsPage : Page
     private bool _hostsLoaded;
     private bool _environmentLoaded;
     private bool _windowsLoaded;
+    private bool _fileLocksLoaded;
     private bool _systemLoaded;
     private bool _loadingHostsEditor;
     private bool _syncingEnvironmentEditor;
     private bool _syncingWindowSelection;
+    private bool _syncingFileLockSelection;
 
     public SystemToolsPage()
     {
@@ -62,6 +68,7 @@ public sealed partial class SystemToolsPage : Page
         EnvironmentVariablesList.ItemsSource = _environmentVariables;
         EnvironmentPathItemsList.ItemsSource = _environmentPathItems;
         WindowsList.ItemsSource = _windows;
+        FileLocksList.ItemsSource = _fileLocks;
 
         _toastTimer = DispatcherQueue.CreateTimer();
         _toastTimer.Interval = TimeSpan.FromSeconds(2);
@@ -109,6 +116,12 @@ public sealed partial class SystemToolsPage : Page
             return "windows";
         }
 
+        if (toolId.Contains("filelock", StringComparison.OrdinalIgnoreCase)
+            || toolId.Contains("lock", StringComparison.OrdinalIgnoreCase))
+        {
+            return "filelock";
+        }
+
         if (toolId.Contains("system", StringComparison.OrdinalIgnoreCase)
             || toolId.Contains("snapshot", StringComparison.OrdinalIgnoreCase))
         {
@@ -136,6 +149,7 @@ public sealed partial class SystemToolsPage : Page
         HostsPanel.Visibility = tab == "hosts" ? Visibility.Visible : Visibility.Collapsed;
         EnvironmentPanel.Visibility = tab == "env" ? Visibility.Visible : Visibility.Collapsed;
         WindowPanel.Visibility = tab == "windows" ? Visibility.Visible : Visibility.Collapsed;
+        FileLockPanel.Visibility = tab == "filelock" ? Visibility.Visible : Visibility.Collapsed;
         SystemPanel.Visibility = tab == "system" ? Visibility.Visible : Visibility.Collapsed;
 
         ApplyTabButtonState(NetworkTabButton, tab == "network");
@@ -143,6 +157,7 @@ public sealed partial class SystemToolsPage : Page
         ApplyTabButtonState(HostsTabButton, tab == "hosts");
         ApplyTabButtonState(EnvironmentTabButton, tab == "env");
         ApplyTabButtonState(WindowTabButton, tab == "windows");
+        ApplyTabButtonState(FileLockTabButton, tab == "filelock");
         ApplyTabButtonState(SystemTabButton, tab == "system");
 
         PageSubtitle.Text = tab switch
@@ -151,6 +166,7 @@ public sealed partial class SystemToolsPage : Page
             "hosts" => "读取、备份、编辑和保存 hosts",
             "env" => "用户变量、系统变量、Path 列表编辑",
             "windows" => "窗口列表、置顶、透明度和会话内还原",
+            "filelock" => "检测文件或文件夹占用进程，并提供回收站删除和高级强制处理",
             "system" => "系统版本、硬件、内存、磁盘",
             _ => "网卡、IP、代理、Ping、DNS 和 TCP 连接测试"
         };
@@ -192,6 +208,9 @@ public sealed partial class SystemToolsPage : Page
                     break;
                 case "windows":
                     await LoadWindowsAsync(version, forceRefresh);
+                    break;
+                case "filelock":
+                    await LoadFileLocksAsync(version, forceRefresh);
                     break;
                 case "system":
                     await LoadSystemAsync(version, forceRefresh);
@@ -595,6 +614,330 @@ public sealed partial class SystemToolsPage : Page
 
         CopyText(_parameter.Diagnostics.BuildPortReport(GetFilteredPorts().ToArray()));
         ShowToast("端口列表已复制");
+    }
+
+    private async Task LoadFileLocksAsync(int version, bool forceRefresh)
+    {
+        if (_parameter is null)
+        {
+            return;
+        }
+
+        var path = FileLockPathInput.Text?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            FileLockSummaryText.Text = "输入文件或文件夹路径后开始检测";
+            FileLockStatusText.Text = "可从命令面板打开本页，也可以直接粘贴路径。";
+            _fileLocks.Clear();
+            _allFileLocks = Array.Empty<FileLockEntry>();
+            _fileLockSnapshot = null;
+            _fileLocksLoaded = false;
+            RefreshFileLockSelectionText();
+            return;
+        }
+
+        if (!forceRefresh && _fileLocksLoaded && _fileLockSnapshot is not null)
+        {
+            RenderFileLocks();
+            return;
+        }
+
+        SetFileLocksLoadingState();
+        var snapshot = await _parameter.FileLocks.ScanAsync(path);
+        if (!IsCurrentLoad(version, "filelock"))
+        {
+            return;
+        }
+
+        foreach (var entry in snapshot.Entries)
+        {
+            entry.IsSelected = entry.CanKill || entry.CanCloseHandle;
+        }
+
+        _fileLockSnapshot = snapshot;
+        _allFileLocks = snapshot.Entries;
+        _fileLocksLoaded = true;
+        RenderFileLocks();
+    }
+
+    private void RenderFileLocks()
+    {
+        if (_fileLockSnapshot is null)
+        {
+            return;
+        }
+
+        FileLockSummaryText.Text = _fileLockSnapshot.SummaryText;
+        FileLockStatusText.Text = string.IsNullOrWhiteSpace(_fileLockSnapshot.Warning)
+            ? _fileLockSnapshot.TargetPath
+            : _fileLockSnapshot.TargetPath + Environment.NewLine + _fileLockSnapshot.Warning;
+
+        _fileLocks.Clear();
+        foreach (var entry in _allFileLocks)
+        {
+            _fileLocks.Add(entry);
+        }
+
+        UpdateFileLockSelectAllState();
+        RefreshFileLockSelectionText();
+    }
+
+    private async void OnPickFileLockFileClick(object sender, RoutedEventArgs e)
+    {
+        if (_parameter is null)
+        {
+            return;
+        }
+
+        var path = ShellPathPicker.PickFilePath(_parameter.OwnerHwnd);
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        FileLockPathInput.Text = path;
+        await LoadFileLocksAsync(++_loadVersion, forceRefresh: true);
+    }
+
+    private async void OnPickFileLockFolderClick(object sender, RoutedEventArgs e)
+    {
+        if (_parameter is null)
+        {
+            return;
+        }
+
+        var path = ShellPathPicker.PickFolderPath(_parameter.OwnerHwnd);
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        FileLockPathInput.Text = path;
+        await LoadFileLocksAsync(++_loadVersion, forceRefresh: true);
+    }
+
+    private async void OnScanFileLocksClick(object sender, RoutedEventArgs e)
+        => await LoadFileLocksAsync(++_loadVersion, forceRefresh: true);
+
+    private void OnFileLockSelectionChanged(object sender, RoutedEventArgs e)
+    {
+        UpdateFileLockSelectAllState();
+        RefreshFileLockSelectionText();
+    }
+
+    private void OnSelectAllFileLocksChanged(object sender, RoutedEventArgs e)
+    {
+        if (SelectAllFileLocksCheckBox is null)
+        {
+            return;
+        }
+
+        if (_syncingFileLockSelection)
+        {
+            return;
+        }
+
+        var selected = SelectAllFileLocksCheckBox.IsChecked == true;
+        foreach (var entry in _fileLocks)
+        {
+            entry.IsSelected = selected;
+        }
+
+        FileLocksList.ItemsSource = null;
+        FileLocksList.ItemsSource = _fileLocks;
+        RefreshFileLockSelectionText();
+    }
+
+    private async void OnDeleteFileLockTargetClick(object sender, RoutedEventArgs e)
+    {
+        if (_parameter is null || !TryGetFileLockTarget(out var path, out var isDirectory))
+        {
+            return;
+        }
+
+        var dialog = new ContentDialog
+        {
+            Title = "删除到回收站",
+            Content = $"确定将目标移入回收站？\n{path}",
+            PrimaryButtonText = "删除",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = XamlRoot,
+            RequestedTheme = ElementTheme.Dark
+        };
+
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        var result = await _parameter.FileLocks.DeleteToRecycleBinAsync(path, isDirectory);
+        ShowToast(result.Message);
+        if (result.Success)
+        {
+            _fileLocksLoaded = false;
+            await LoadFileLocksAsync(++_loadVersion, forceRefresh: true);
+        }
+    }
+
+    private async void OnKillFileLockProcessesClick(object sender, RoutedEventArgs e)
+    {
+        if (_parameter is null || !TryGetFileLockTarget(out var path, out var isDirectory))
+        {
+            return;
+        }
+
+        var entries = GetSelectedFileLocks().Where(e => e.CanKill).ToArray();
+        if (entries.Length == 0)
+        {
+            ShowToast("请选择可结束的占用项");
+            return;
+        }
+
+        var processCount = entries.Select(e => e.ProcessId).Distinct().Count();
+        var dialog = new ContentDialog
+        {
+            Title = "结束进程后删除",
+            Content = $"将结束 {processCount} 个进程，然后把目标移入回收站。\n未保存的数据可能丢失。\n{path}",
+            PrimaryButtonText = "结束并删除",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = XamlRoot,
+            RequestedTheme = ElementTheme.Dark
+        };
+
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        var result = await _parameter.FileLocks.KillProcessesAndDeleteAsync(path, isDirectory, entries);
+        ShowToast(result.Message);
+        await LoadFileLocksAsync(++_loadVersion, forceRefresh: true);
+    }
+
+    private async void OnCloseFileLockHandlesClick(object sender, RoutedEventArgs e)
+    {
+        if (_parameter is null || !TryGetFileLockTarget(out var path, out var isDirectory))
+        {
+            return;
+        }
+
+        var entries = GetSelectedFileLocks().Where(e => e.CanCloseHandle).ToArray();
+        if (entries.Length == 0)
+        {
+            ShowToast("请选择可关闭的文件句柄");
+            return;
+        }
+
+        var dialog = new ContentDialog
+        {
+            Title = "关闭句柄后删除",
+            Content = $"将关闭 {entries.Length} 个远程文件句柄，然后把目标移入回收站。\n这个操作可能导致占用程序出错或数据损坏。\n{path}",
+            PrimaryButtonText = "关闭并删除",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = XamlRoot,
+            RequestedTheme = ElementTheme.Dark
+        };
+
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        var result = await _parameter.FileLocks.CloseHandlesAndDeleteAsync(path, isDirectory, entries);
+        ShowToast(result.Message);
+        await LoadFileLocksAsync(++_loadVersion, forceRefresh: true);
+    }
+
+    private void OnCopyFileLockReportClick(object sender, RoutedEventArgs e)
+    {
+        if (_parameter is null || _fileLockSnapshot is null)
+        {
+            ShowToast("没有可复制的检测报告");
+            return;
+        }
+
+        CopyText(_parameter.FileLocks.BuildReport(_fileLockSnapshot));
+        ShowToast("文件锁定报告已复制");
+    }
+
+    private void OnCopyFileLockEntryClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: FileLockEntry entry })
+        {
+            CopyText(entry.ToReportText());
+            ShowToast("占用信息已复制");
+        }
+    }
+
+    private void OnOpenFileLockProcessFolderClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: FileLockEntry entry })
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(entry.ProcessDirectory)
+            || !System.IO.Directory.Exists(entry.ProcessDirectory))
+        {
+            ShowToast("进程目录不可用");
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo(entry.ProcessDirectory)
+            {
+                UseShellExecute = true
+            });
+            ShowToast("已打开进程目录");
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            ShowToast("打开失败：" + ex.Message);
+        }
+    }
+
+    private bool TryGetFileLockTarget(out string path, out bool isDirectory)
+    {
+        path = FileLockPathInput.Text?.Trim().Trim('"') ?? string.Empty;
+        isDirectory = _fileLockSnapshot?.IsDirectory ?? System.IO.Directory.Exists(path);
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            ShowToast("请输入文件或文件夹路径");
+            return false;
+        }
+
+        return true;
+    }
+
+    private FileLockEntry[] GetSelectedFileLocks()
+        => _fileLocks.Where(e => e.IsSelected).ToArray();
+
+    private void RefreshFileLockSelectionText()
+    {
+        if (FileLockSelectionText is null)
+        {
+            return;
+        }
+
+        FileLockSelectionText.Text = _fileLocks.Count == 0
+            ? string.Empty
+            : $"{_fileLocks.Count(e => e.IsSelected)}/{_fileLocks.Count} 项已选";
+    }
+
+    private void UpdateFileLockSelectAllState()
+    {
+        if (SelectAllFileLocksCheckBox is null)
+        {
+            return;
+        }
+
+        _syncingFileLockSelection = true;
+        SelectAllFileLocksCheckBox.IsChecked = _fileLocks.Count > 0 && _fileLocks.All(e => e.IsSelected);
+        _syncingFileLockSelection = false;
     }
 
     private async Task LoadHostsAsync(int version, bool forceRefresh)
@@ -1441,6 +1784,18 @@ public sealed partial class SystemToolsPage : Page
         {
             _windows.Clear();
             RenderSelectedWindow(null);
+        }
+    }
+
+    private void SetFileLocksLoadingState()
+    {
+        FileLockSummaryText.Text = _fileLocksLoaded ? "文件锁定检测刷新中..." : "文件锁定检测中...";
+        FileLockStatusText.Text = "正在枚举系统文件句柄...";
+        if (!_fileLocksLoaded)
+        {
+            _fileLocks.Clear();
+            _allFileLocks = Array.Empty<FileLockEntry>();
+            RefreshFileLockSelectionText();
         }
     }
 

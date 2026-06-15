@@ -275,6 +275,49 @@
             </StackPanel>
         </DataTemplate>
 
+        <DataTemplate x:Key="FileLockEntryTemplate" x:DataType="diag:FileLockEntry">
+            <Grid ColumnSpacing="8" Padding="0,7">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                          Checked="OnFileLockSelectionChanged"
+                          Unchecked="OnFileLockSelectionChanged"
+                          VerticalAlignment="Center" />
+                <StackPanel Grid.Column="1" Spacing="2">
+                    <TextBlock Text="{Binding Title}"
+                               FontSize="12"
+                               Foreground="{ThemeResource EdgeTextBrush}"
+                               TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="{Binding FilePath}"
+                               FontSize="11"
+                               Foreground="{ThemeResource EdgeMutedBrush}"
+                               TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="{Binding Detail}"
+                               FontSize="11"
+                               Foreground="{ThemeResource EdgeMutedBrush}"
+                               TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+                <Button Grid.Column="2"
+                        Style="{StaticResource SmallIconButtonStyle}"
+                        Tag="{Binding}"
+                        Click="OnCopyFileLockEntryClick"
+                        ToolTipService.ToolTip="复制占用信息">
+                    <FontIcon FontSize="13" Glyph="&#xE8C8;" />
+                </Button>
+                <Button Grid.Column="3"
+                        Style="{StaticResource SmallIconButtonStyle}"
+                        Tag="{Binding}"
+                        Click="OnOpenFileLockProcessFolderClick"
+                        ToolTipService.ToolTip="打开进程目录">
+                    <FontIcon FontSize="13" Glyph="&#xE8B7;" />
+                </Button>
+            </Grid>
+        </DataTemplate>
+
     </Page.Resources>
 
     <Grid x:Name="PageRoot" Padding="24,16,24,16" RowSpacing="12">
@@ -320,6 +363,7 @@
                 <Button x:Name="HostsTabButton" Tag="hosts" Content="Hosts" Click="OnTabClick" Style="{StaticResource ToolTabButtonStyle}" />
                 <Button x:Name="EnvironmentTabButton" Tag="env" Content="环境变量" Click="OnTabClick" Style="{StaticResource ToolTabButtonStyle}" />
                 <Button x:Name="WindowTabButton" Tag="windows" Content="窗口管理" Click="OnTabClick" Style="{StaticResource ToolTabButtonStyle}" />
+                <Button x:Name="FileLockTabButton" Tag="filelock" Content="文件锁定" Click="OnTabClick" Style="{StaticResource ToolTabButtonStyle}" />
                 <Button x:Name="SystemTabButton" Tag="system" Content="系统信息" Click="OnTabClick" Style="{StaticResource ToolTabButtonStyle}" />
             </StackPanel>
         </ScrollViewer>
@@ -790,6 +834,74 @@
                             </Grid>
                         </Border>
                     </Grid>
+                </StackPanel>
+            </ScrollViewer>
+
+            <ScrollViewer x:Name="FileLockPanel" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
+                <StackPanel Spacing="12" Padding="0,0,8,0">
+                    <Border Style="{StaticResource SectionCardStyle}">
+                        <Grid RowSpacing="8">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBlock x:Name="FileLockSummaryText"
+                                       Text="输入文件或文件夹路径后开始检测"
+                                       FontSize="13"
+                                       FontWeight="SemiBold"
+                                       Foreground="{ThemeResource EdgeTextBrush}"
+                                       TextWrapping="Wrap" />
+                            <Grid Grid.Row="1" ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Name="FileLockPathInput"
+                                         PlaceholderText="文件或文件夹路径"
+                                         MinWidth="0" />
+                                <Button Grid.Column="1" Content="选文件" Click="OnPickFileLockFileClick" />
+                                <Button Grid.Column="2" Content="选文件夹" Click="OnPickFileLockFolderClick" />
+                                <Button Grid.Column="3" Content="检测" Click="OnScanFileLocksClick" />
+                            </Grid>
+                            <TextBlock x:Name="FileLockStatusText"
+                                       Grid.Row="2"
+                                       FontSize="11"
+                                       Foreground="{ThemeResource EdgeMutedBrush}"
+                                       TextWrapping="Wrap" />
+                            <Grid Grid.Row="3" ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                    <CheckBox x:Name="SelectAllFileLocksCheckBox"
+                                              Content="全选"
+                                              Checked="OnSelectAllFileLocksChanged"
+                                              Unchecked="OnSelectAllFileLocksChanged" />
+                                    <TextBlock x:Name="FileLockSelectionText"
+                                               FontSize="11"
+                                               Foreground="{ThemeResource EdgeMutedBrush}"
+                                               VerticalAlignment="Center" />
+                                </StackPanel>
+                                <Button Grid.Column="1" Content="删除到回收站" Click="OnDeleteFileLockTargetClick" />
+                                <Button Grid.Column="2" Content="结束进程后删除" Click="OnKillFileLockProcessesClick" />
+                                <Button Grid.Column="3" Content="关闭句柄后删除" Click="OnCloseFileLockHandlesClick" />
+                                <Button Grid.Column="4" Content="复制报告" Click="OnCopyFileLockReportClick" />
+                            </Grid>
+                        </Grid>
+                    </Border>
+
+                    <ListView x:Name="FileLocksList"
+                              ItemTemplate="{StaticResource FileLockEntryTemplate}"
+                              SelectionMode="None"
+                              MaxHeight="560" />
                 </StackPanel>
             </ScrollViewer>
 

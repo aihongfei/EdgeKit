@@ -86,9 +86,10 @@ public partial class App : Application
         var hostsFileService = Services.GetRequiredService<HostsFileService>();
         var environmentVariables = Services.GetRequiredService<EnvironmentVariableService>();
         var windowManagement = Services.GetRequiredService<WindowManagementService>();
+        var fileLocks = Services.GetRequiredService<FileLockService>();
         var imageTools = Services.GetRequiredService<ImageProcessingService>();
         var textTools = Services.GetRequiredService<TextProcessingService>();
-        var drawerWindow = new DrawerWindow(settings, shellViewModel, recentItems, quickLaunchItems, quickLaunchActions, homeViewModel, windowMonitor, searchCoordinator, appIndex, commandRegistry, commandExecutor, customCommands, clipboardService, clipboardViewModel, systemDiagnostics, hostsFileService, environmentVariables, windowManagement, imageTools, textTools);
+        var drawerWindow = new DrawerWindow(settings, shellViewModel, recentItems, quickLaunchItems, quickLaunchActions, homeViewModel, windowMonitor, searchCoordinator, appIndex, commandRegistry, commandExecutor, customCommands, clipboardService, clipboardViewModel, systemDiagnostics, hostsFileService, environmentVariables, windowManagement, fileLocks, imageTools, textTools);
         drawerWindow.Closed += OnDrawerWindowClosed;
         _drawerWindow = drawerWindow;
 
@@ -179,6 +180,7 @@ public partial class App : Application
         services.AddSingleton<HostsFileService>();
         services.AddSingleton<EnvironmentVariableService>();
         services.AddSingleton<WindowManagementService>();
+        services.AddSingleton<FileLockService>();
         services.AddSingleton<ImageProcessingService>();
         services.AddSingleton<TextProcessingService>();
 
@@ -212,6 +214,12 @@ public partial class App : Application
             && string.Equals(args[1], EnvironmentVariableService.ElevatedSaveArgument, StringComparison.OrdinalIgnoreCase))
         {
             return EnvironmentVariableService.ExecuteElevatedSaveCommand(args[2]);
+        }
+
+        if (args.Length >= 3
+            && string.Equals(args[1], FileLockService.ElevatedActionArgument, StringComparison.OrdinalIgnoreCase))
+        {
+            return FileLockService.ExecuteElevatedActionCommand(args[2]);
         }
 
         return null;

@@ -9,4 +9,5 @@ public sealed record SystemToolsPageParameter(
     SystemDiagnosticsService Diagnostics,
     HostsFileService Hosts,
     EnvironmentVariableService EnvironmentVariables,
-    WindowManagementService WindowManagement);
+    WindowManagementService WindowManagement,
+    FileLockService FileLocks);

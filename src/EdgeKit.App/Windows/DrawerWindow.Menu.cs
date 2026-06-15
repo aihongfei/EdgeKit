@@ -100,7 +100,8 @@ public sealed partial class DrawerWindow
                     _systemDiagnostics,
                     _hostsFileService,
                     _environmentVariables,
-                    _windowManagement));
+                    _windowManagement,
+                    _fileLocks));
         }
         else
         {
@@ -130,7 +131,9 @@ public sealed partial class DrawerWindow
     }
 
     private static string GetVisibleToolId(string toolId)
-        => toolId is "text.encode" or "json.format" or "json.tree" ? "text.tools" : toolId;
+        => toolId is "text.encode" or "json.format" or "json.tree" ? "text.tools"
+            : toolId == "system.filelock" ? "system.tools"
+            : toolId;
 
     private void OnPaneOpening(NavigationView sender, object args)
     {

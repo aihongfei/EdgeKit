@@ -32,6 +32,7 @@ public sealed class ToolCatalog : IToolCatalog
 
         // 系统工具
         new("system.tools", "系统工具", "\uE770", ToolCategory.System, 0, "网络、端口、Hosts、环境变量、窗口管理"),
+        new("system.filelock", "文件锁定检测", "\uE8A5", ToolCategory.System, 1, "检测文件或文件夹占用进程并处理锁定"),
 
         // 设置
         new("settings.center", "设置中心", "\uE713", ToolCategory.Settings, 0, "常规、抽屉、快捷键、隐私等设置"),

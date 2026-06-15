@@ -60,6 +60,7 @@ public sealed partial class DrawerWindow : Window
     private readonly HostsFileService _hostsFileService;
     private readonly EnvironmentVariableService _environmentVariables;
     private readonly WindowManagementService _windowManagement;
+    private readonly FileLockService _fileLocks;
     private readonly ImageProcessingService _imageTools;
     private readonly TextProcessingService _textTools;
 
@@ -139,6 +140,7 @@ public sealed partial class DrawerWindow : Window
         HostsFileService hostsFileService,
         EnvironmentVariableService environmentVariables,
         WindowManagementService windowManagement,
+        FileLockService fileLocks,
         ImageProcessingService imageTools,
         TextProcessingService textTools)
     {
@@ -160,6 +162,7 @@ public sealed partial class DrawerWindow : Window
         _hostsFileService = hostsFileService;
         _environmentVariables = environmentVariables;
         _windowManagement = windowManagement;
+        _fileLocks = fileLocks;
         _imageTools = imageTools;
         _textTools = textTools;
         InitializeComponent();

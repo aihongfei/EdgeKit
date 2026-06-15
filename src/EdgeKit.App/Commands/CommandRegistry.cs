@@ -142,6 +142,8 @@ public sealed class CommandRegistry
             CommandKind.Process, "wt.exe", "", 207, false, "terminal", "cmd", "powershell", "zd"),
         C("system.explorer", "文件资源管理器", "打开文件资源管理器", "\uE8B7", "系统工具",
             CommandKind.Process, "explorer.exe", "", 208, false, "explorer", "wjzyglq"),
+        C("system.filelock", "文件锁定检测", "检测文件或文件夹被哪个进程占用", "\uE8A5", "系统工具",
+            CommandKind.BuiltInAction, "navigate:system.filelock", "", 209, false, "file lock", "locked file", "unlocker", "wjzd", "wjzy"),
 
         C("shell.desktop", "桌面", "打开桌面文件夹", "\uE80F", "Shell 入口",
             CommandKind.WindowsUri, "shell:Desktop", "", 300, false, "desktop", "zm"),
