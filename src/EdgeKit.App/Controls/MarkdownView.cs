@@ -48,11 +48,21 @@ public sealed class MarkdownView : StackPanel
         }
     }
 
+    private const int MaxRenderChars = 20000;
+    private const int MaxRenderBlocks = 400;
+
     private void RenderMarkdown(string markdown)
     {
         Children.Clear();
         if (string.IsNullOrWhiteSpace(markdown))
         {
+            return;
+        }
+
+        // 超长内容直接降级为纯文本，避免生成超深可视树导致渲染线程卡死/闪退。
+        if (markdown.Length > MaxRenderChars)
+        {
+            Children.Add(CreateTextBlock(markdown));
             return;
         }
 
@@ -67,13 +77,21 @@ public sealed class MarkdownView : StackPanel
             return;
         }
 
+        var blockCount = 0;
         foreach (var block in document)
         {
+            if (blockCount >= MaxRenderBlocks)
+            {
+                Children.Add(CreateTextBlock("…（内容过长，已折叠剩余部分）"));
+                break;
+            }
+
             try
             {
                 if (RenderBlock(block, listDepth: 0) is { } element)
                 {
                     Children.Add(element);
+                    blockCount++;
                 }
             }
             catch
@@ -87,6 +105,7 @@ public sealed class MarkdownView : StackPanel
                 if (!string.IsNullOrWhiteSpace(fallback))
                 {
                     Children.Add(CreateTextBlock(fallback));
+                    blockCount++;
                 }
             }
         }

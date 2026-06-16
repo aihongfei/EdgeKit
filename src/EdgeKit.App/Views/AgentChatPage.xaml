@@ -106,12 +106,16 @@
                         Click="OnContextStatusClick">
                     <Grid>
                         <ProgressRing x:Name="ContextProgressRing"
-                                      Width="24"
-                                      Height="24"
-                                      IsActive="False" />
+                                      Width="30"
+                                      Height="30"
+                                      Minimum="0"
+                                      Maximum="100"
+                                      Value="0"
+                                      IsIndeterminate="False"
+                                      IsActive="True" />
                         <TextBlock x:Name="ContextPercentText"
                                    Text="0%"
-                                   FontSize="11"
+                                   FontSize="10"
                                    HorizontalAlignment="Center"
                                    VerticalAlignment="Center"
                                    Foreground="{ThemeResource EdgeTextBrush}" />
@@ -143,16 +147,14 @@
                                                        Foreground="{ThemeResource EdgeMutedBrush}" />
                                         </StackPanel>
                                     </Border>
-                                    <TextBlock Text="实际上下文预览"
+                                    <TextBlock Text="上下文用量"
                                                FontWeight="SemiBold"
                                                Foreground="{ThemeResource EdgeTextBrush}" />
-                                    <TextBox x:Name="ContextPreviewBox"
-                                             MinHeight="260"
-                                             MaxHeight="360"
-                                             IsReadOnly="True"
-                                             AcceptsReturn="True"
-                                             TextWrapping="Wrap"
-                                             FontFamily="Consolas" />
+                                    <ProgressBar x:Name="ContextUsageBar"
+                                                 Minimum="0"
+                                                 Maximum="100"
+                                                 Value="0"
+                                                 Height="8" />
                                 </StackPanel>
                             </ScrollViewer>
                         </Flyout>
@@ -162,7 +164,13 @@
 
             <ListView x:Name="MessageList" Grid.Row="1"
                       SelectionMode="None"
-                      IsItemClickEnabled="False">
+                      IsItemClickEnabled="False"
+                      ScrollViewer.IsScrollInertiaEnabled="True">
+                <ListView.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <ItemsStackPanel CacheLength="2.0" />
+                    </ItemsPanelTemplate>
+                </ListView.ItemsPanel>
                 <ListView.ItemContainerStyle>
                     <Style TargetType="ListViewItem">
                         <Setter Property="HorizontalContentAlignment" Value="Stretch" />

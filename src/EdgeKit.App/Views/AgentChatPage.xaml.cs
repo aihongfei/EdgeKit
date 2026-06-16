@@ -20,6 +20,8 @@ public sealed partial class AgentChatPage : Page
     private static readonly Brush StopButtonPressedBrush = new SolidColorBrush(global::Windows.UI.Color.FromArgb(255, 160, 28, 28));
 
     private readonly ObservableCollection<AgentTimelineItemViewModel> _timeline = new();
+    private readonly Dictionary<long, AgentTimelineItemViewModel> _messageIndex = new();
+    private readonly Dictionary<long, AgentTimelineItemViewModel> _toolCallIndex = new();
     private readonly HashSet<long> _toolActionsInProgress = new();
     private readonly HashSet<long> _titleGeneratingConversationIds = new();
     private readonly Queue<AgentStreamEvent> _pendingStreamEvents = new();
@@ -38,12 +40,79 @@ public sealed partial class AgentChatPage : Page
     private readonly HashSet<long> _scrolledToolCallIdsThisTurn = new();
     private CancellationTokenSource? _sendCancellation;
     private CancellationTokenSource? _statusAutoCloseCts;
+    private ScrollViewer? _messageScrollViewer;
+    private bool _scrollUpdateScheduled;
 
     public AgentChatPage()
     {
         InitializeComponent();
+        _timeline.CollectionChanged += OnTimelineCollectionChanged;
         MessageList.ItemsSource = _timeline;
         PromptBox.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(OnPromptKeyDown), handledEventsToo: true);
+    }
+
+    private void OnTimelineCollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        switch (e.Action)
+        {
+            case System.Collections.Specialized.NotifyCollectionChangedAction.Reset:
+                _messageIndex.Clear();
+                _toolCallIndex.Clear();
+                break;
+            case System.Collections.Specialized.NotifyCollectionChangedAction.Add:
+            case System.Collections.Specialized.NotifyCollectionChangedAction.Replace:
+                if (e.OldItems is not null)
+                {
+                    foreach (var old in e.OldItems.OfType<AgentTimelineItemViewModel>())
+                    {
+                        UnindexTimelineItem(old);
+                    }
+                }
+
+                if (e.NewItems is not null)
+                {
+                    foreach (var added in e.NewItems.OfType<AgentTimelineItemViewModel>())
+                    {
+                        IndexTimelineItem(added);
+                    }
+                }
+
+                break;
+            case System.Collections.Specialized.NotifyCollectionChangedAction.Remove:
+                if (e.OldItems is not null)
+                {
+                    foreach (var old in e.OldItems.OfType<AgentTimelineItemViewModel>())
+                    {
+                        UnindexTimelineItem(old);
+                    }
+                }
+
+                break;
+        }
+    }
+
+    private void IndexTimelineItem(AgentTimelineItemViewModel item)
+    {
+        if (item.Kind == AgentTimelineItemKind.Message && item.MessageId != 0)
+        {
+            _messageIndex[item.MessageId] = item;
+        }
+        else if (item.Kind == AgentTimelineItemKind.ToolCall && item.ToolCallId != 0)
+        {
+            _toolCallIndex[item.ToolCallId] = item;
+        }
+    }
+
+    private void UnindexTimelineItem(AgentTimelineItemViewModel item)
+    {
+        if (item.Kind == AgentTimelineItemKind.Message && item.MessageId != 0)
+        {
+            _messageIndex.Remove(item.MessageId);
+        }
+        else if (item.Kind == AgentTimelineItemKind.ToolCall && item.ToolCallId != 0)
+        {
+            _toolCallIndex.Remove(item.ToolCallId);
+        }
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
@@ -539,8 +608,7 @@ public sealed partial class AgentChatPage : Page
 
     private AgentTimelineItemViewModel UpsertMessage(AgentMessage message)
     {
-        var existing = _timeline.FirstOrDefault(i => i.MessageId == message.Id);
-        if (existing is not null)
+        if (_messageIndex.TryGetValue(message.Id, out var existing))
         {
             existing.UpdateMessage(message);
             CollapseCompletedToolsForMessage(message);
@@ -574,8 +642,7 @@ public sealed partial class AgentChatPage : Page
     {
         foreach (var call in calls)
         {
-            var existing = _timeline.FirstOrDefault(i => i.ToolCallId == call.Id);
-            if (existing is not null)
+            if (_toolCallIndex.TryGetValue(call.Id, out var existing))
             {
                 existing.UpdateToolCall(call);
                 RememberPreferredScrollTool(existing);
@@ -584,8 +651,8 @@ public sealed partial class AgentChatPage : Page
 
             var item = new AgentTimelineItemViewModel(call);
             RememberPreferredScrollTool(item);
-            var relatedMessage = call.MessageId is long messageId
-                ? _timeline.FirstOrDefault(i => i.MessageId == messageId)
+            var relatedMessage = call.MessageId is long messageId && _messageIndex.TryGetValue(messageId, out var related)
+                ? related
                 : null;
             var messageIndex = relatedMessage is null ? -1 : _timeline.IndexOf(relatedMessage);
             var assistantIndex = messageIndex >= 0
@@ -764,8 +831,7 @@ public sealed partial class AgentChatPage : Page
 
     private void MarkToolCallRunning(long id)
     {
-        var existing = _timeline.FirstOrDefault(i => i.ToolCallId == id);
-        if (existing?.ToolCall is null)
+        if (!_toolCallIndex.TryGetValue(id, out var existing) || existing.ToolCall is null)
         {
             return;
         }
@@ -1008,17 +1074,25 @@ public sealed partial class AgentChatPage : Page
         _contextStatus = status;
         if (status is null)
         {
-            ContextProgressRing.IsActive = false;
+            ContextProgressRing.IsIndeterminate = false;
+            ContextProgressRing.Value = 0;
             ContextPercentText.Text = "0%";
+            ContextUsageBar.Value = 0;
             ContextSummaryText.Text = "暂无上下文信息。";
-            ContextPreviewBox.Text = string.Empty;
             ContextCompressingPanel.Visibility = Visibility.Collapsed;
             return;
         }
 
         var percent = Math.Clamp((int)Math.Round(status.UsageRatio * 100), 0, 999);
-        ContextProgressRing.IsActive = status.IsCompressing;
+        var ringValue = Math.Clamp(percent, 0, 100);
+        ContextProgressRing.IsIndeterminate = status.IsCompressing;
+        if (!status.IsCompressing)
+        {
+            ContextProgressRing.Value = ringValue;
+        }
+
         ContextPercentText.Text = percent.ToString() + "%";
+        ContextUsageBar.Value = ringValue;
         ContextCompressingPanel.Visibility = status.IsCompressing ? Visibility.Visible : Visibility.Collapsed;
         ContextSummaryText.Text =
             $"约 {status.EstimatedTokens:N0} / {status.ContextWindowTokens:N0} tokens" + Environment.NewLine +
@@ -1026,9 +1100,6 @@ public sealed partial class AgentChatPage : Page
             (status.LastCompressedUtc is null
                 ? string.Empty
                 : Environment.NewLine + "最近压缩: " + status.LastCompressedUtc.Value.ToLocalTime().ToString("MM-dd HH:mm"));
-        ContextPreviewBox.Text = string.IsNullOrWhiteSpace(status.Preview)
-            ? "暂无可预览上下文。"
-            : status.Preview;
     }
 
     private void OnContextStatusClick(object sender, RoutedEventArgs e)
@@ -1123,9 +1194,6 @@ public sealed partial class AgentChatPage : Page
     private void ScrollMessagesToEnd(bool force = false)
     {
         ScrollMessagesToEndCore(force);
-        DispatcherQueue.TryEnqueue(
-            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
-            () => ScrollMessagesToEndCore(force: true));
     }
 
     private void ScrollToPreferredItemOrEnd(bool force = false)
@@ -1142,16 +1210,11 @@ public sealed partial class AgentChatPage : Page
     }
 
     private void ScrollTimelineItemIntoView(AgentTimelineItemViewModel item, bool force)
-    {
-        ScrollTimelineItemIntoViewCore(item, force);
-        DispatcherQueue.TryEnqueue(
-            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
-            () => ScrollTimelineItemIntoViewCore(item, force: true));
-    }
+        => ScrollTimelineItemIntoViewCore(item, force);
 
     private void ScrollTimelineItemIntoViewCore(AgentTimelineItemViewModel item, bool force)
     {
-        var sv = FindScrollViewer(MessageList);
+        var sv = GetMessageScrollViewer();
         if (sv is null)
         {
             return;
@@ -1163,12 +1226,11 @@ public sealed partial class AgentChatPage : Page
         }
 
         MessageList.ScrollIntoView(item);
-        MessageList.UpdateLayout();
     }
 
     private void ScrollMessagesToEndCore(bool force)
     {
-        var sv = FindScrollViewer(MessageList);
+        var sv = GetMessageScrollViewer();
         if (sv is null)
         {
             return;
@@ -1184,8 +1246,32 @@ public sealed partial class AgentChatPage : Page
             MessageList.ScrollIntoView(_timeline[^1]);
         }
 
-        MessageList.UpdateLayout();
-        sv.ChangeView(null, sv.ScrollableHeight, null, disableAnimation: true);
+        // 用一次低优先级排队收敛布局，避免每个流式 delta 都触发同步 UpdateLayout 抖动。
+        if (_scrollUpdateScheduled)
+        {
+            return;
+        }
+
+        _scrollUpdateScheduled = true;
+        DispatcherQueue.TryEnqueue(
+            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+            () =>
+            {
+                _scrollUpdateScheduled = false;
+                var inner = GetMessageScrollViewer();
+                inner?.ChangeView(null, inner.ScrollableHeight, null, disableAnimation: true);
+            });
+    }
+
+    private ScrollViewer? GetMessageScrollViewer()
+    {
+        if (_messageScrollViewer is not null)
+        {
+            return _messageScrollViewer;
+        }
+
+        _messageScrollViewer = FindScrollViewer(MessageList);
+        return _messageScrollViewer;
     }
 
     private static ScrollViewer? FindScrollViewer(DependencyObject parent)

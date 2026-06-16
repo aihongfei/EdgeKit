@@ -1641,15 +1641,9 @@ public sealed class AgentService : IAgentService
 
     private static string BuildContextPreview(IReadOnlyList<Microsoft.Extensions.AI.ChatMessage> messages)
     {
-        var builder = new StringBuilder();
-        foreach (var message in messages)
-        {
-            builder.AppendLine("[" + message.Role + "]");
-            builder.AppendLine(TrimForPrompt(message.Text ?? string.Empty, 3000));
-            builder.AppendLine();
-        }
-
-        return builder.ToString().Trim();
+        // 预览不再展示整段上下文原文，避免长会话拼接超长字符串导致 UI 卡死/闪退。
+        // 用量信息已通过 AgentContextStatus 的 token/消息计数与进度条呈现。
+        return string.Empty;
     }
 
     private static int EstimateTokens(string text)

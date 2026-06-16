@@ -233,7 +233,7 @@ public sealed class AgentTimelineItemViewModel : INotifyPropertyChanged
         var previous = _toolCall;
         _toolCall = toolCall;
         ApplyAutomaticExpansion(previous, toolCall);
-        RaiseAll();
+        RaiseToolProperties();
     }
 
     public void AppendDelta(string delta)
@@ -349,6 +349,18 @@ public sealed class AgentTimelineItemViewModel : INotifyPropertyChanged
         Raise(nameof(UseMarkdownPreview));
         Raise(nameof(IsStreaming));
         Raise(nameof(StreamedContent));
+    }
+
+    private void RaiseToolProperties()
+    {
+        Raise(nameof(ToolVisibility));
+        Raise(nameof(ToolActionVisibility));
+        Raise(nameof(ToolTitle));
+        Raise(nameof(ToolStatusText));
+        Raise(nameof(ToolSummary));
+        Raise(nameof(ToolDetail));
+        Raise(nameof(CanApprove));
+        Raise(nameof(TimeText));
     }
 
     private void RaiseAll()
