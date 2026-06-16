@@ -71,7 +71,8 @@ public sealed class SqliteAgentRepository : IAgentRepository
         return new AgentConversationDetail(
             conversation,
             ReadMessages(connection, id),
-            ReadToolCalls(connection, id));
+            ReadToolCalls(connection, id),
+            ReadContextSummaries(connection, id));
     }
 
     public AgentConversation CreateConversation(string title, AgentConversationMode mode, string model)
@@ -140,6 +141,7 @@ public sealed class SqliteAgentRepository : IAgentRepository
 
         foreach (var sql in new[]
         {
+            "DELETE FROM AgentContextSummaries WHERE ConversationId = $id;",
             "DELETE FROM AgentToolCalls WHERE ConversationId = $id;",
             "DELETE FROM AgentMessages WHERE ConversationId = $id;",
             "DELETE FROM AgentConversations WHERE Id = $id;"
@@ -153,6 +155,61 @@ public sealed class SqliteAgentRepository : IAgentRepository
         }
 
         transaction.Commit();
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    public AgentContextSummary? GetContextSummary(long conversationId)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "SELECT Id, ConversationId, Summary, SourceMessageSequence, SourceToolCallId, EstimatedTokens, CreatedUtc, UpdatedUtc " +
+            "FROM AgentContextSummaries WHERE ConversationId = $conversation ORDER BY UpdatedUtc DESC, Id DESC LIMIT 1;";
+        command.Parameters.AddWithValue("$conversation", conversationId);
+
+        using var reader = command.ExecuteReader();
+        return reader.Read() ? ReadContextSummary(reader) : null;
+    }
+
+    public AgentContextSummary SaveContextSummary(
+        long conversationId,
+        string summary,
+        int sourceMessageSequence,
+        int sourceToolCallId,
+        int estimatedTokens)
+    {
+        var now = DateTime.UtcNow;
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "INSERT INTO AgentContextSummaries (ConversationId, Summary, SourceMessageSequence, SourceToolCallId, EstimatedTokens, CreatedUtc, UpdatedUtc) " +
+            "VALUES ($conversation, $summary, $messageSequence, $toolCallId, $tokens, $created, $updated) " +
+            "ON CONFLICT(ConversationId) DO UPDATE SET " +
+            "Summary = excluded.Summary, " +
+            "SourceMessageSequence = excluded.SourceMessageSequence, " +
+            "SourceToolCallId = excluded.SourceToolCallId, " +
+            "EstimatedTokens = excluded.EstimatedTokens, " +
+            "UpdatedUtc = excluded.UpdatedUtc;";
+        command.Parameters.AddWithValue("$conversation", conversationId);
+        command.Parameters.AddWithValue("$summary", summary);
+        command.Parameters.AddWithValue("$messageSequence", sourceMessageSequence);
+        command.Parameters.AddWithValue("$toolCallId", sourceToolCallId);
+        command.Parameters.AddWithValue("$tokens", estimatedTokens);
+        command.Parameters.AddWithValue("$created", FormatDate(now));
+        command.Parameters.AddWithValue("$updated", FormatDate(now));
+        command.ExecuteNonQuery();
+
+        Changed?.Invoke(this, EventArgs.Empty);
+        return GetContextSummary(conversationId)!;
+    }
+
+    public void DeleteContextSummary(long conversationId)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM AgentContextSummaries WHERE ConversationId = $conversation;";
+        command.Parameters.AddWithValue("$conversation", conversationId);
+        command.ExecuteNonQuery();
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -392,7 +449,17 @@ public sealed class SqliteAgentRepository : IAgentRepository
             "StartedUtc TEXT NULL, " +
             "CompletedUtc TEXT NULL, " +
             "Error TEXT NOT NULL DEFAULT '');" +
-            "CREATE INDEX IF NOT EXISTS IX_AgentToolCalls_Conversation ON AgentToolCalls(ConversationId, CreatedUtc);";
+            "CREATE INDEX IF NOT EXISTS IX_AgentToolCalls_Conversation ON AgentToolCalls(ConversationId, CreatedUtc);" +
+            "CREATE TABLE IF NOT EXISTS AgentContextSummaries (" +
+            "Id INTEGER PRIMARY KEY AUTOINCREMENT, " +
+            "ConversationId INTEGER NOT NULL UNIQUE, " +
+            "Summary TEXT NOT NULL, " +
+            "SourceMessageSequence INTEGER NOT NULL DEFAULT 0, " +
+            "SourceToolCallId INTEGER NOT NULL DEFAULT 0, " +
+            "EstimatedTokens INTEGER NOT NULL DEFAULT 0, " +
+            "CreatedUtc TEXT NOT NULL, " +
+            "UpdatedUtc TEXT NOT NULL);" +
+            "CREATE INDEX IF NOT EXISTS IX_AgentContextSummaries_Conversation ON AgentContextSummaries(ConversationId);";
         command.ExecuteNonQuery();
         EnsureColumn(connection, "AgentMessages", "ActivityText", "TEXT NOT NULL DEFAULT ''");
     }
@@ -467,6 +534,24 @@ public sealed class SqliteAgentRepository : IAgentRepository
         return result;
     }
 
+    private static IReadOnlyList<AgentContextSummary> ReadContextSummaries(SqliteConnection connection, long conversationId)
+    {
+        var result = new List<AgentContextSummary>();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "SELECT Id, ConversationId, Summary, SourceMessageSequence, SourceToolCallId, EstimatedTokens, CreatedUtc, UpdatedUtc " +
+            "FROM AgentContextSummaries WHERE ConversationId = $conversation ORDER BY UpdatedUtc ASC, Id ASC;";
+        command.Parameters.AddWithValue("$conversation", conversationId);
+
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            result.Add(ReadContextSummary(reader));
+        }
+
+        return result;
+    }
+
     private static AgentConversation ReadConversation(SqliteDataReader reader)
         => new(
             reader.GetInt64(0),
@@ -507,6 +592,17 @@ public sealed class SqliteAgentRepository : IAgentRepository
             reader.IsDBNull(12) ? null : ParseDate(reader.GetString(12)),
             reader.IsDBNull(13) ? null : ParseDate(reader.GetString(13)),
             reader.GetString(14));
+
+    private static AgentContextSummary ReadContextSummary(SqliteDataReader reader)
+        => new(
+            reader.GetInt64(0),
+            reader.GetInt64(1),
+            reader.GetString(2),
+            reader.GetInt32(3),
+            reader.GetInt32(4),
+            reader.GetInt32(5),
+            ParseDate(reader.GetString(6)),
+            ParseDate(reader.GetString(7)));
 
     private static TEnum ParseEnum<TEnum>(string value, TEnum fallback)
         where TEnum : struct, Enum

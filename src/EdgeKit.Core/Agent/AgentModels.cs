@@ -80,7 +80,8 @@ public sealed record AgentSettings(
     string SearchApiKeyPreview,
     string TrustedDirectories,
     string ShellCommandWhitelist,
-    string McpServersJson);
+    string McpServersJson,
+    int ContextWindowTokens = 256000);
 
 public sealed record AgentConversation(
     long Id,
@@ -120,10 +121,33 @@ public sealed record AgentToolCall(
     DateTime? CompletedUtc,
     string Error);
 
+public sealed record AgentContextSummary(
+    long Id,
+    long ConversationId,
+    string Summary,
+    int SourceMessageSequence,
+    int SourceToolCallId,
+    int EstimatedTokens,
+    DateTime CreatedUtc,
+    DateTime UpdatedUtc);
+
+public sealed record AgentContextStatus(
+    long ConversationId,
+    int EstimatedTokens,
+    int ContextWindowTokens,
+    double UsageRatio,
+    int MessageCount,
+    int ToolSummaryCount,
+    int CompressionSummaryCount,
+    bool IsCompressing,
+    DateTime? LastCompressedUtc,
+    string Preview);
+
 public sealed record AgentConversationDetail(
     AgentConversation Conversation,
     IReadOnlyList<AgentMessage> Messages,
-    IReadOnlyList<AgentToolCall> ToolCalls);
+    IReadOnlyList<AgentToolCall> ToolCalls,
+    IReadOnlyList<AgentContextSummary> ContextSummaries);
 
 public sealed record AgentSendResult(
     bool Success,
@@ -135,6 +159,7 @@ public sealed record AgentSendResult(
 public enum AgentStreamEventKind
 {
     Started,
+    ContextChanged,
     Delta,
     ToolCallsChanged,
     PausedForToolApproval,
@@ -148,7 +173,8 @@ public sealed record AgentStreamEvent(
     AgentMessage? AssistantMessage,
     string Delta,
     IReadOnlyList<AgentToolCall> ToolCalls,
-    string ErrorMessage);
+    string ErrorMessage,
+    AgentContextStatus? ContextStatus = null);
 
 public sealed record AgentToolApprovalResult(
     bool Success,

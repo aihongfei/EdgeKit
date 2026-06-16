@@ -20,6 +20,17 @@ public interface IAgentRepository
 
     void SaveSession(long id, string sessionJson);
 
+    AgentContextSummary? GetContextSummary(long conversationId);
+
+    AgentContextSummary SaveContextSummary(
+        long conversationId,
+        string summary,
+        int sourceMessageSequence,
+        int sourceToolCallId,
+        int estimatedTokens);
+
+    void DeleteContextSummary(long conversationId);
+
     AgentMessage AddMessage(
         long conversationId,
         AgentMessageRole role,

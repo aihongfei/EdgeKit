@@ -34,6 +34,7 @@ public sealed partial class AgentChatPage : Page
     private AgentTimelineItemViewModel? _streamingAssistantItem;
     private AgentTimelineItemViewModel? _preferredScrollItem;
     private long _activeTurnAssistantMessageId;
+    private AgentContextStatus? _contextStatus;
     private readonly HashSet<long> _scrolledToolCallIdsThisTurn = new();
     private CancellationTokenSource? _sendCancellation;
     private CancellationTokenSource? _statusAutoCloseCts;
@@ -138,6 +139,7 @@ public sealed partial class AgentChatPage : Page
         _activeTurnAssistantMessageId = 0;
         _scrolledToolCallIdsThisTurn.Clear();
         RebuildTimeline(detail);
+        UpdateContextStatus(_agent.GetContextStatus(_selectedConversationId));
         ScrollToPreferredItemOrEnd(force: true);
     }
 
@@ -160,6 +162,7 @@ public sealed partial class AgentChatPage : Page
         }
 
         UpsertToolCalls(detail.ToolCalls);
+        UpdateContextStatus(_agent.GetContextStatus(_selectedConversationId));
         if (_sending)
         {
             return;
@@ -495,6 +498,10 @@ public sealed partial class AgentChatPage : Page
         }
 
         UpsertToolCalls(item.ToolCalls);
+        if (item.ContextStatus is not null)
+        {
+            UpdateContextStatus(item.ContextStatus);
+        }
 
         if (item.Kind == AgentStreamEventKind.Completed && item.AssistantMessage is not null)
         {
@@ -803,6 +810,7 @@ public sealed partial class AgentChatPage : Page
             ? "未配置 API Key"
             : "已配置 API Key " + settings.ApiKeyPreview;
         AiTemperatureBox.Value = settings.Temperature;
+        AiContextWindowTokensBox.Value = settings.ContextWindowTokens;
         SelectActionMode(settings.ActionMode);
         AiAllowClipboardToolsSwitch.IsOn = settings.AllowClipboardTools;
         AiEnableFileToolsSwitch.IsOn = settings.EnableFileTools;
@@ -906,7 +914,8 @@ public sealed partial class AgentChatPage : Page
             current.SearchApiKeyPreview,
             AiTrustedDirectoriesBox.Text,
             AiShellCommandWhitelistBox.Text,
-            AiMcpServersJsonBox.Text));
+            AiMcpServersJsonBox.Text,
+            double.IsNaN(AiContextWindowTokensBox.Value) ? current.ContextWindowTokens : (int)AiContextWindowTokensBox.Value));
 
         if (includeApiKey || includeSearchApiKey)
         {
@@ -991,6 +1000,42 @@ public sealed partial class AgentChatPage : Page
         {
             SendButton.Resources.Remove("ButtonBackgroundPointerOver");
             SendButton.Resources.Remove("ButtonBackgroundPressed");
+        }
+    }
+
+    private void UpdateContextStatus(AgentContextStatus? status)
+    {
+        _contextStatus = status;
+        if (status is null)
+        {
+            ContextProgressRing.IsActive = false;
+            ContextPercentText.Text = "0%";
+            ContextSummaryText.Text = "暂无上下文信息。";
+            ContextPreviewBox.Text = string.Empty;
+            ContextCompressingPanel.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var percent = Math.Clamp((int)Math.Round(status.UsageRatio * 100), 0, 999);
+        ContextProgressRing.IsActive = status.IsCompressing;
+        ContextPercentText.Text = percent.ToString() + "%";
+        ContextCompressingPanel.Visibility = status.IsCompressing ? Visibility.Visible : Visibility.Collapsed;
+        ContextSummaryText.Text =
+            $"约 {status.EstimatedTokens:N0} / {status.ContextWindowTokens:N0} tokens" + Environment.NewLine +
+            $"消息: {status.MessageCount:N0}  工具摘要: {status.ToolSummaryCount:N0}  压缩摘要: {status.CompressionSummaryCount:N0}" +
+            (status.LastCompressedUtc is null
+                ? string.Empty
+                : Environment.NewLine + "最近压缩: " + status.LastCompressedUtc.Value.ToLocalTime().ToString("MM-dd HH:mm"));
+        ContextPreviewBox.Text = string.IsNullOrWhiteSpace(status.Preview)
+            ? "暂无可预览上下文。"
+            : status.Preview;
+    }
+
+    private void OnContextStatusClick(object sender, RoutedEventArgs e)
+    {
+        if (_agent is not null && _selectedConversationId > 0)
+        {
+            UpdateContextStatus(_agent.GetContextStatus(_selectedConversationId));
         }
     }
 

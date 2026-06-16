@@ -88,9 +88,77 @@
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-            <InfoBar x:Name="StatusBar"
-                     IsOpen="False"
-                     IsClosable="True" />
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <InfoBar x:Name="StatusBar"
+                         IsOpen="False"
+                         IsClosable="True" />
+                <Button x:Name="ContextStatusButton"
+                        Grid.Column="1"
+                        Width="74"
+                        Height="36"
+                        Margin="8,0,0,0"
+                        HorizontalAlignment="Right"
+                        ToolTipService.ToolTip="上下文信息"
+                        Click="OnContextStatusClick">
+                    <Grid>
+                        <ProgressRing x:Name="ContextProgressRing"
+                                      Width="24"
+                                      Height="24"
+                                      IsActive="False" />
+                        <TextBlock x:Name="ContextPercentText"
+                                   Text="0%"
+                                   FontSize="11"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   Foreground="{ThemeResource EdgeTextBrush}" />
+                    </Grid>
+                    <Button.Flyout>
+                        <Flyout>
+                            <ScrollViewer Width="440"
+                                          MaxHeight="520">
+                                <StackPanel Spacing="10">
+                                    <TextBlock Text="上下文信息"
+                                               FontSize="18"
+                                               FontWeight="SemiBold"
+                                               Foreground="{ThemeResource EdgeTextBrush}" />
+                                    <TextBlock x:Name="ContextSummaryText"
+                                               TextWrapping="Wrap"
+                                               Foreground="{ThemeResource EdgeMutedBrush}" />
+                                    <Border x:Name="ContextCompressingPanel"
+                                            Visibility="Collapsed"
+                                            Background="{ThemeResource EdgeControlBrush}"
+                                            BorderBrush="{ThemeResource EdgeLineBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="8"
+                                            Padding="8">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <ProgressRing Width="16"
+                                                          Height="16"
+                                                          IsActive="True" />
+                                            <TextBlock Text="正在压缩上下文..."
+                                                       Foreground="{ThemeResource EdgeMutedBrush}" />
+                                        </StackPanel>
+                                    </Border>
+                                    <TextBlock Text="实际上下文预览"
+                                               FontWeight="SemiBold"
+                                               Foreground="{ThemeResource EdgeTextBrush}" />
+                                    <TextBox x:Name="ContextPreviewBox"
+                                             MinHeight="260"
+                                             MaxHeight="360"
+                                             IsReadOnly="True"
+                                             AcceptsReturn="True"
+                                             TextWrapping="Wrap"
+                                             FontFamily="Consolas" />
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Flyout>
+                    </Button.Flyout>
+                </Button>
+            </Grid>
 
             <ListView x:Name="MessageList" Grid.Row="1"
                       SelectionMode="None"
@@ -381,6 +449,29 @@
                                Maximum="2"
                                SmallChange="0.1"
                                LargeChange="0.5"
+                               SpinButtonPlacementMode="Inline"
+                               ValueChanged="OnAgentNumberSettingChanged" />
+                </Grid>
+
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="190" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="上下文窗口上限" Foreground="{ThemeResource EdgeTextBrush}" />
+                        <TextBlock Text="默认 256000，接近上限会自动压缩旧上下文"
+                                   FontSize="12"
+                                   Foreground="{ThemeResource EdgeMutedBrush}"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                    <NumberBox x:Name="AiContextWindowTokensBox"
+                               Grid.Column="1"
+                               Height="36"
+                               Minimum="8000"
+                               Maximum="1000000"
+                               SmallChange="1000"
+                               LargeChange="16000"
                                SpinButtonPlacementMode="Inline"
                                ValueChanged="OnAgentNumberSettingChanged" />
                 </Grid>

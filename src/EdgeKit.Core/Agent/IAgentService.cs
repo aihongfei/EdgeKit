@@ -14,6 +14,8 @@ public interface IAgentService
 
     AgentConversationDetail? GetConversation(long id);
 
+    AgentContextStatus? GetContextStatus(long conversationId);
+
     AgentConversation CreateConversation(AgentConversationMode mode);
 
     void UpdateConversation(long id, string title, AgentConversationMode mode);

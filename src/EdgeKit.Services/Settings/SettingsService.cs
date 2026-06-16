@@ -265,6 +265,13 @@ public sealed class SettingsService : ISettingsService
         set => SetField(ref _aiMcpServersJson, value?.Trim() ?? string.Empty);
     }
 
+    private int _aiContextWindowTokens = 256000;
+    public int AiContextWindowTokens
+    {
+        get => _aiContextWindowTokens;
+        set => SetField(ref _aiContextWindowTokens, ClampContextWindowTokens(value));
+    }
+
     public void Load()
     {
         var values = _store.LoadAll();
@@ -310,6 +317,7 @@ public sealed class SettingsService : ISettingsService
         _aiTrustedDirectories = NormalizeMultiline(GetString(values, nameof(AiTrustedDirectories), _aiTrustedDirectories));
         _aiShellCommandWhitelist = NormalizeMultiline(GetString(values, nameof(AiShellCommandWhitelist), _aiShellCommandWhitelist));
         _aiMcpServersJson = GetString(values, nameof(AiMcpServersJson), _aiMcpServersJson);
+        _aiContextWindowTokens = ClampContextWindowTokens(GetInt(values, nameof(AiContextWindowTokens), _aiContextWindowTokens));
 
         Changed?.Invoke(this, EventArgs.Empty);
     }
@@ -351,6 +359,7 @@ public sealed class SettingsService : ISettingsService
         _store.Set(nameof(AiTrustedDirectories), _aiTrustedDirectories);
         _store.Set(nameof(AiShellCommandWhitelist), _aiShellCommandWhitelist);
         _store.Set(nameof(AiMcpServersJson), _aiMcpServersJson);
+        _store.Set(nameof(AiContextWindowTokens), _aiContextWindowTokens.ToString(CultureInfo.InvariantCulture));
         _store.Save();
 
         Changed?.Invoke(this, EventArgs.Empty);
@@ -431,6 +440,8 @@ public sealed class SettingsService : ISettingsService
     private static int ClampRecentDisplayLimit(int value) => Math.Clamp(value, 1, 20);
 
     private static int ClampQuickLaunchVisibleRows(int value) => Math.Clamp(value, 1, 4);
+
+    private static int ClampContextWindowTokens(int value) => Math.Clamp(value, 8000, 1000000);
 
     private static double ClampTemperature(double value)
         => double.IsNaN(value) ? 0.2 : Math.Clamp(value, 0, 2);

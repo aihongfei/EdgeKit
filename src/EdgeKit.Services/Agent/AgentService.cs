@@ -17,6 +17,10 @@ namespace EdgeKit.Services.Agent;
 public sealed class AgentService : IAgentService
 {
     private const int MaxToolCallsPerTurn = 8;
+    private const double ContextCompressionThreshold = 0.8;
+    private const int ContextRecentLedgerItemsToKeep = 20;
+    private const int ToolContextSummaryMaxChars = 2000;
+    private const int MessageContextMaxChars = 12000;
     private const string WaitingForToolApprovalText = "等待确认工具调用...";
     private const string StoppedByUserActivityText = "已中止本次回复。";
 
@@ -38,6 +42,7 @@ public sealed class AgentService : IAgentService
     private AgentToolCall? _pendingApprovalCall;
     private AgentStreamContext? _activeStreamContext;
     private readonly Dictionary<string, long> _toolCallsByTurnSignature = new(StringComparer.Ordinal);
+    private readonly HashSet<long> _compressingConversationIds = new();
 
     public AgentService(
         ISettingsService settings,
@@ -99,7 +104,8 @@ public sealed class AgentService : IAgentService
             _settings.AiSearchApiKeyPreview,
             _settings.AiTrustedDirectories,
             _settings.AiShellCommandWhitelist,
-            _settings.AiMcpServersJson);
+            _settings.AiMcpServersJson,
+            _settings.AiContextWindowTokens);
     }
 
     public void SaveSettings(AgentSettings settings)
@@ -126,6 +132,7 @@ public sealed class AgentService : IAgentService
         _settings.AiTrustedDirectories = settings.TrustedDirectories;
         _settings.AiShellCommandWhitelist = settings.ShellCommandWhitelist;
         _settings.AiMcpServersJson = settings.McpServersJson;
+        _settings.AiContextWindowTokens = settings.ContextWindowTokens;
 
         if (!string.IsNullOrWhiteSpace(settings.SearchApiKey))
         {
@@ -170,6 +177,17 @@ public sealed class AgentService : IAgentService
 
     public AgentConversationDetail? GetConversation(long id)
         => _repository.GetConversation(id);
+
+    public AgentContextStatus? GetContextStatus(long conversationId)
+    {
+        var detail = _repository.GetConversation(conversationId);
+        if (detail is null)
+        {
+            return null;
+        }
+
+        return BuildContextPackage(detail, GetSettings(), null).Status;
+    }
 
     public AgentConversation CreateConversation(AgentConversationMode mode)
     {
@@ -247,9 +265,15 @@ public sealed class AgentService : IAgentService
 
         try
         {
+            detail = _repository.GetConversation(conversationId) ?? detail;
             var agent = await BuildAgentAsync(settings, AgentConversationMode.Chat, cancellationToken).ConfigureAwait(false);
-            var session = await CreateSessionAsync(agent, detail.Messages, cancellationToken).ConfigureAwait(false);
-            var runMessage = BuildContinuationPromptIfNeeded(detail, message.Trim()) ?? message.Trim();
+            var preparedContext = await PrepareContextAsync(
+                detail,
+                settings,
+                cancellationToken,
+                excludeMessageId: userMessage.Id).ConfigureAwait(false);
+            var session = await CreateSessionAsync(agent, preparedContext, cancellationToken).ConfigureAwait(false);
+            var runMessage = BuildContinuationPromptIfNeeded(preparedContext.Detail, message.Trim(), userMessage.Id) ?? message.Trim();
             var response = await agent.RunAsync(
                 runMessage,
                 session,
@@ -378,8 +402,22 @@ public sealed class AgentService : IAgentService
             _toolCallsByTurnSignature.Clear();
 
             var agent = await BuildAgentAsync(settings, AgentConversationMode.Chat, cancellationToken).ConfigureAwait(false);
-            var session = await CreateSessionAsync(agent, detail.Messages, cancellationToken).ConfigureAwait(false);
-            var runMessage = BuildContinuationPromptIfNeeded(detail, trimmedMessage) ?? trimmedMessage;
+            detail = _repository.GetConversation(conversationId) ?? detail;
+            var contextStatus = BuildContextPackage(detail, settings, null, userMessage.Id).Status;
+            await writer.WriteAsync(
+                new AgentStreamEvent(AgentStreamEventKind.ContextChanged, userMessage, assistantMessage, string.Empty, GetToolCalls(conversationId), string.Empty, contextStatus),
+                cancellationToken).ConfigureAwait(false);
+
+            var preparedContext = await PrepareContextAsync(
+                detail,
+                settings,
+                cancellationToken,
+                writer,
+                userMessage,
+                assistantMessage,
+                excludeMessageId: userMessage.Id).ConfigureAwait(false);
+            var session = await CreateSessionAsync(agent, preparedContext, cancellationToken).ConfigureAwait(false);
+            var runMessage = BuildContinuationPromptIfNeeded(preparedContext.Detail, trimmedMessage, userMessage.Id) ?? trimmedMessage;
             await foreach (var update in agent.RunStreamingAsync(
                     runMessage,
                     session,
@@ -747,7 +785,8 @@ public sealed class AgentService : IAgentService
             _toolCallsByTurnSignature.Clear();
 
             var agent = await BuildAgentAsync(settings, AgentConversationMode.Chat, cancellationToken).ConfigureAwait(false);
-            var session = await CreateSessionAsync(agent, detail.Messages, cancellationToken, assistantMessage.Id).ConfigureAwait(false);
+            var preparedContext = await PrepareContextAsync(detail, settings, cancellationToken, includeUserBeforeAssistantId: assistantMessage.Id).ConfigureAwait(false);
+            var session = await CreateSessionAsync(agent, preparedContext, cancellationToken).ConfigureAwait(false);
             var prompt =
                 $"工具 {call.ToolName} 已执行完成。请基于以下结果继续完成用户上一条任务；" +
                 "如果还需要调用工具可以继续调用。完成后用中文简洁说明结果，不要要求用户手动执行你能通过工具完成的步骤。\n" +
@@ -1228,17 +1267,421 @@ public sealed class AgentService : IAgentService
 
     private async Task<AgentSession> CreateSessionAsync(
         ChatClientAgent agent,
-        IReadOnlyList<AgentMessage> messages,
-        CancellationToken cancellationToken,
-        long includeUserBeforeAssistantId = 0)
+        AgentContextPackage context,
+        CancellationToken cancellationToken)
     {
         var session = await agent.CreateSessionAsync(cancellationToken).ConfigureAwait(false);
-        var history = BuildCleanChatHistory(messages, includeUserBeforeAssistantId)
-            .TakeLast(30)
-            .Select(m => new Microsoft.Extensions.AI.ChatMessage(ToChatRole(m.Role), m.Content.Trim()))
-            .ToList();
-        session.SetInMemoryChatHistory(history, null, JsonOptions);
+        session.SetInMemoryChatHistory(context.Messages.ToList(), null, JsonOptions);
         return session;
+    }
+
+    private async Task<AgentContextPackage> PrepareContextAsync(
+        AgentConversationDetail detail,
+        AgentSettings settings,
+        CancellationToken cancellationToken,
+        ChannelWriter<AgentStreamEvent>? writer = null,
+        AgentMessage? userMessage = null,
+        AgentMessage? assistantMessage = null,
+        long includeUserBeforeAssistantId = 0,
+        long excludeMessageId = 0)
+    {
+        var package = BuildContextPackage(detail, settings, includeUserBeforeAssistantId, excludeMessageId);
+        var compressionLimit = (int)Math.Ceiling(settings.ContextWindowTokens * ContextCompressionThreshold);
+        if (package.Status.EstimatedTokens < compressionLimit
+            || package.VisibleEntries.Count <= ContextRecentLedgerItemsToKeep)
+        {
+            return package;
+        }
+
+        var conversationId = detail.Conversation.Id;
+        lock (_compressingConversationIds)
+        {
+            _compressingConversationIds.Add(conversationId);
+        }
+
+        if (writer is not null)
+        {
+            await writer.WriteAsync(
+                new AgentStreamEvent(
+                    AgentStreamEventKind.ContextChanged,
+                    userMessage,
+                    assistantMessage,
+                    string.Empty,
+                    GetToolCalls(conversationId),
+                    string.Empty,
+                    package.Status with { IsCompressing = true }),
+                CancellationToken.None).ConfigureAwait(false);
+        }
+
+        try
+        {
+            var summary = await CompressContextAsync(package, settings, cancellationToken).ConfigureAwait(false);
+            if (summary is not null)
+            {
+                detail = _repository.GetConversation(conversationId) ?? detail;
+                package = BuildContextPackage(detail, settings, includeUserBeforeAssistantId, excludeMessageId);
+            }
+        }
+        finally
+        {
+            lock (_compressingConversationIds)
+            {
+                _compressingConversationIds.Remove(conversationId);
+            }
+        }
+
+        if (writer is not null)
+        {
+            await writer.WriteAsync(
+                new AgentStreamEvent(
+                    AgentStreamEventKind.ContextChanged,
+                    userMessage,
+                    assistantMessage,
+                    string.Empty,
+                    GetToolCalls(conversationId),
+                    string.Empty,
+                    package.Status),
+                CancellationToken.None).ConfigureAwait(false);
+        }
+
+        return package;
+    }
+
+    private async Task<AgentContextSummary?> CompressContextAsync(
+        AgentContextPackage package,
+        AgentSettings settings,
+        CancellationToken cancellationToken)
+    {
+        var compressibleEntries = package.VisibleEntries
+            .Take(Math.Max(0, package.VisibleEntries.Count - ContextRecentLedgerItemsToKeep))
+            .ToArray();
+        if (compressibleEntries.Length == 0)
+        {
+            return null;
+        }
+
+        var source = BuildCompressionSource(package.Summary, compressibleEntries);
+        var summary = await GenerateContextSummaryAsync(settings, source, cancellationToken).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(summary))
+        {
+            summary = BuildLocalContextSummary(package.Summary, compressibleEntries);
+        }
+
+        var messageCutoff = Math.Max(
+            package.Summary?.SourceMessageSequence ?? 0,
+            compressibleEntries.Max(e => e.MessageSequence));
+        var toolCutoff = Math.Max(
+            package.Summary?.SourceToolCallId ?? 0,
+            compressibleEntries.Max(e => e.ToolCallId));
+        return _repository.SaveContextSummary(
+            package.Detail.Conversation.Id,
+            summary.Trim(),
+            messageCutoff,
+            toolCutoff,
+            EstimateTokens(summary));
+    }
+
+    private async Task<string> GenerateContextSummaryAsync(
+        AgentSettings settings,
+        string source,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var options = new OpenAIClientOptions
+            {
+                Endpoint = new Uri(settings.BaseUrl)
+            };
+            var nativeClient = new ChatClient(settings.Model, new ApiKeyCredential(settings.ApiKey), options);
+            var client = nativeClient.AsIChatClient();
+            var response = await client.GetResponseAsync(
+                [
+                    new Microsoft.Extensions.AI.ChatMessage(
+                        ChatRole.System,
+                        "你负责压缩 EdgeKit 智能体的旧会话上下文。必须保留用户意图、已给出的结论、未完成事项、工具调用的成功/失败/错误信息、关键路径/命令/数值。用中文结构化摘要，不要编造。"),
+                    new Microsoft.Extensions.AI.ChatMessage(
+                        ChatRole.User,
+                        "请压缩以下旧上下文，供后续对话继续使用：" + Environment.NewLine + TrimForPrompt(source, 120000))
+                ],
+                new ChatOptions
+                {
+                    ModelId = settings.Model,
+                    Temperature = 0.1f
+                },
+                cancellationToken).ConfigureAwait(false);
+            return response.Text ?? string.Empty;
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    private AgentContextPackage BuildContextPackage(
+        AgentConversationDetail detail,
+        AgentSettings settings,
+        long? includeUserBeforeAssistantId,
+        long? excludeMessageId = null)
+    {
+        var summary = detail.ContextSummaries
+            .OrderByDescending(s => s.UpdatedUtc)
+            .ThenByDescending(s => s.Id)
+            .FirstOrDefault();
+        var entries = BuildContextLedgerEntries(detail, includeUserBeforeAssistantId, excludeMessageId).ToArray();
+        var visibleEntries = entries
+            .Where(e => !IsCoveredBySummary(e, summary))
+            .ToArray();
+
+        var messages = new List<Microsoft.Extensions.AI.ChatMessage>();
+        if (summary is not null && !string.IsNullOrWhiteSpace(summary.Summary))
+        {
+            messages.Add(new Microsoft.Extensions.AI.ChatMessage(
+                ChatRole.System,
+                "以下是较早会话上下文的自动压缩摘要。后续对话需要把它当作真实历史背景使用：" +
+                Environment.NewLine +
+                summary.Summary.Trim()));
+        }
+
+        foreach (var entry in visibleEntries)
+        {
+            messages.Add(new Microsoft.Extensions.AI.ChatMessage(entry.Role, entry.Content));
+        }
+
+        var estimatedTokens = messages.Sum(m => EstimateTokens(m.Text ?? string.Empty) + 8);
+        var preview = BuildContextPreview(messages);
+        var compressing = IsCompressionInProgress(detail.Conversation.Id);
+        var status = new AgentContextStatus(
+            detail.Conversation.Id,
+            estimatedTokens,
+            settings.ContextWindowTokens,
+            settings.ContextWindowTokens <= 0 ? 0 : Math.Min(1, estimatedTokens / (double)settings.ContextWindowTokens),
+            detail.Messages.Count(m => m.Role is AgentMessageRole.User or AgentMessageRole.Assistant),
+            detail.ToolCalls.Count,
+            summary is null ? 0 : 1,
+            compressing,
+            summary?.UpdatedUtc,
+            preview);
+        return new AgentContextPackage(detail, messages, status, summary, visibleEntries);
+    }
+
+    private static IEnumerable<ContextLedgerEntry> BuildContextLedgerEntries(
+        AgentConversationDetail detail,
+        long? includeUserBeforeAssistantId,
+        long? excludeMessageId)
+    {
+        var entries = new List<ContextLedgerEntry>();
+        foreach (var message in detail.Messages.Where(m => m.Role != AgentMessageRole.Tool))
+        {
+            if (excludeMessageId is > 0 && message.Id == excludeMessageId)
+            {
+                continue;
+            }
+
+            var content = FormatMessageForContext(message);
+            if (string.IsNullOrWhiteSpace(content))
+            {
+                continue;
+            }
+
+            entries.Add(new ContextLedgerEntry(
+                message.CreatedUtc,
+                message.Sequence,
+                0,
+                ToChatRole(message.Role),
+                content,
+                IsTool: false));
+        }
+
+        foreach (var tool in detail.ToolCalls)
+        {
+            entries.Add(new ContextLedgerEntry(
+                tool.CreatedUtc,
+                0,
+                checked((int)Math.Min(tool.Id, int.MaxValue)),
+                ChatRole.Assistant,
+                FormatToolCallForContext(tool),
+                IsTool: true));
+        }
+
+        if (includeUserBeforeAssistantId is > 0
+            && detail.Messages.FirstOrDefault(m => m.Id == includeUserBeforeAssistantId) is { } assistant)
+        {
+            var sourceUser = detail.Messages
+                .Where(m => m.Role == AgentMessageRole.User && m.Sequence < assistant.Sequence)
+                .OrderByDescending(m => m.Sequence)
+                .ThenByDescending(m => m.Id)
+                .FirstOrDefault();
+            if (sourceUser is not null && entries.All(e => e.MessageSequence != sourceUser.Sequence))
+            {
+                entries.Add(new ContextLedgerEntry(
+                    sourceUser.CreatedUtc,
+                    sourceUser.Sequence,
+                    0,
+                    ChatRole.User,
+                    sourceUser.Content.Trim(),
+                    IsTool: false));
+            }
+        }
+
+        return entries
+            .OrderBy(e => e.CreatedUtc)
+            .ThenBy(e => e.MessageSequence == 0 ? int.MaxValue : e.MessageSequence)
+            .ThenBy(e => e.ToolCallId);
+    }
+
+    private static string FormatMessageForContext(AgentMessage message)
+    {
+        if (message.Role == AgentMessageRole.User)
+        {
+            return string.IsNullOrWhiteSpace(message.Content)
+                ? string.Empty
+                : TrimForPrompt(message.Content.Trim(), MessageContextMaxChars);
+        }
+
+        if (message.Role == AgentMessageRole.Assistant)
+        {
+            var parts = new List<string>();
+            if (!string.IsNullOrWhiteSpace(message.Content)
+                && !string.Equals(message.Content.Trim(), WaitingForToolApprovalText, StringComparison.Ordinal)
+                && !string.Equals(message.Content.Trim(), "正在思考...", StringComparison.Ordinal))
+            {
+                parts.Add(TrimForPrompt(message.Content.Trim(), MessageContextMaxChars));
+            }
+
+            if (!string.IsNullOrWhiteSpace(message.ActivityText))
+            {
+                parts.Add("【运行状态】" + message.ActivityText.Trim());
+            }
+
+            if (!string.IsNullOrWhiteSpace(message.Error))
+            {
+                parts.Add("【回复错误】" + TrimForPrompt(message.Error.Trim(), 1200));
+            }
+
+            return string.Join(Environment.NewLine + Environment.NewLine, parts);
+        }
+
+        return string.Empty;
+    }
+
+    private static string FormatToolCallForContext(AgentToolCall tool)
+    {
+        var detail = string.IsNullOrWhiteSpace(tool.Error)
+            ? tool.ResultSummary
+            : tool.Error;
+        if (string.IsNullOrWhiteSpace(detail))
+        {
+            detail = tool.ResultSummary;
+        }
+
+        var builder = new StringBuilder();
+        builder.AppendLine("【工具调用记录】");
+        builder.AppendLine("工具: " + tool.ToolName + " (" + tool.ToolId + ")");
+        builder.AppendLine("风险: " + tool.Risk);
+        builder.AppendLine("审批状态: " + tool.ApprovalStatus);
+        builder.AppendLine("执行状态: " + tool.ExecutionStatus);
+        builder.AppendLine("参数摘要: " + EmptyFallback(TrimForPrompt(tool.ArgumentsSummary, ToolContextSummaryMaxChars)));
+        builder.AppendLine("结果/错误摘要: " + EmptyFallback(TrimForPrompt(detail, ToolContextSummaryMaxChars)));
+        return builder.ToString().Trim();
+    }
+
+    private static bool IsCoveredBySummary(ContextLedgerEntry entry, AgentContextSummary? summary)
+    {
+        if (summary is null)
+        {
+            return false;
+        }
+
+        return entry.IsTool
+            ? entry.ToolCallId > 0 && entry.ToolCallId <= summary.SourceToolCallId
+            : entry.MessageSequence > 0 && entry.MessageSequence <= summary.SourceMessageSequence;
+    }
+
+    private static string BuildCompressionSource(
+        AgentContextSummary? previousSummary,
+        IReadOnlyList<ContextLedgerEntry> entries)
+    {
+        var builder = new StringBuilder();
+        if (previousSummary is not null && !string.IsNullOrWhiteSpace(previousSummary.Summary))
+        {
+            builder.AppendLine("【已有压缩摘要】");
+            builder.AppendLine(previousSummary.Summary.Trim());
+            builder.AppendLine();
+        }
+
+        builder.AppendLine("【新增待压缩上下文】");
+        foreach (var entry in entries)
+        {
+            builder.AppendLine(entry.Role + ":");
+            builder.AppendLine(entry.Content);
+            builder.AppendLine();
+        }
+
+        return builder.ToString();
+    }
+
+    private static string BuildLocalContextSummary(
+        AgentContextSummary? previousSummary,
+        IReadOnlyList<ContextLedgerEntry> entries)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("自动压缩摘要（本地兜底）：");
+        if (previousSummary is not null && !string.IsNullOrWhiteSpace(previousSummary.Summary))
+        {
+            builder.AppendLine(previousSummary.Summary.Trim());
+        }
+
+        foreach (var entry in entries)
+        {
+            builder.AppendLine("- " + entry.Role + ": " + TrimForPrompt(entry.Content.ReplaceLineEndings(" "), 800));
+        }
+
+        return builder.ToString();
+    }
+
+    private static string BuildContextPreview(IReadOnlyList<Microsoft.Extensions.AI.ChatMessage> messages)
+    {
+        var builder = new StringBuilder();
+        foreach (var message in messages)
+        {
+            builder.AppendLine("[" + message.Role + "]");
+            builder.AppendLine(TrimForPrompt(message.Text ?? string.Empty, 3000));
+            builder.AppendLine();
+        }
+
+        return builder.ToString().Trim();
+    }
+
+    private static int EstimateTokens(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return 0;
+        }
+
+        var ascii = 0;
+        var nonAscii = 0;
+        foreach (var ch in text)
+        {
+            if (ch <= 0x7f)
+            {
+                ascii++;
+            }
+            else
+            {
+                nonAscii++;
+            }
+        }
+
+        return Math.Max(1, nonAscii + (int)Math.Ceiling(ascii / 4d));
+    }
+
+    private bool IsCompressionInProgress(long conversationId)
+    {
+        lock (_compressingConversationIds)
+        {
+            return _compressingConversationIds.Contains(conversationId);
+        }
     }
 
     private Task SaveSessionAsync(
@@ -1262,68 +1705,149 @@ public sealed class AgentService : IAgentService
         return Task.CompletedTask;
     }
 
-    private static string? BuildContinuationPromptIfNeeded(AgentConversationDetail detail, string userMessage)
+    private static string? BuildContinuationPromptIfNeeded(AgentConversationDetail detail, string userMessage, long currentUserMessageId = 0)
     {
         if (!IsContinuationRequest(userMessage))
         {
             return null;
         }
 
-        var stoppedAssistant = detail.Messages
-            .Where(m => m.Role == AgentMessageRole.Assistant
-                && m.Status == AgentMessageStatus.Complete
-                && IsStoppedByUserMessage(m)
-                && !string.IsNullOrWhiteSpace(m.Content))
-            .OrderByDescending(m => m.Sequence)
-            .ThenByDescending(m => m.Id)
-            .FirstOrDefault();
-        if (stoppedAssistant is null)
+        var target = FindContinuationTarget(detail, currentUserMessageId);
+        if (target is null)
         {
             return null;
         }
 
-        var sourceUser = detail.Messages
-            .Where(m => m.Role == AgentMessageRole.User
-                && m.Sequence < stoppedAssistant.Sequence
-                && IsCleanUserHistoryMessage(m))
-            .OrderByDescending(m => m.Sequence)
-            .ThenByDescending(m => m.Id)
-            .FirstOrDefault();
-
-        var toolResults = detail.ToolCalls
-            .Where(t => t.MessageId == stoppedAssistant.Id
-                && t.ExecutionStatus == AgentToolExecutionStatus.Succeeded
-                && !string.IsNullOrWhiteSpace(t.ResultSummary))
-            .OrderBy(t => t.CreatedUtc)
-            .Select(t => $"{t.ToolName}: {TrimForPrompt(t.ResultSummary, 1200)}")
-            .ToArray();
-
         var prompt = new StringBuilder();
-        prompt.AppendLine("用户要求继续上一条被中止的回复。请只从该回复中断处继续完成，不要回到更早的话题。");
-        if (sourceUser is not null)
+        prompt.AppendLine("用户要求继续上一轮上下文。请续接最近未完成或最近一条回复，不要跳回更早话题，不要从头重复已写内容。");
+        if (target.SourceUser is not null)
         {
             prompt.AppendLine();
-            prompt.AppendLine("上一条用户问题:");
-            prompt.AppendLine(sourceUser.Content.Trim());
+            prompt.AppendLine("最近要继续的用户问题:");
+            prompt.AppendLine(target.SourceUser.Content.Trim());
         }
 
-        prompt.AppendLine();
-        prompt.AppendLine("已生成的上一条回复正文:");
-        prompt.AppendLine(stoppedAssistant.Content.Trim());
-
-        if (toolResults.Length > 0)
+        if (target.Assistant is not null && !string.IsNullOrWhiteSpace(target.Assistant.Content))
         {
             prompt.AppendLine();
-            prompt.AppendLine("上一条回复已获得的工具结果，可直接基于这些结果继续，避免重复调用同一工具:");
-            foreach (var toolResult in toolResults)
+            prompt.AppendLine("已经生成的回复正文，请从末尾继续:");
+            prompt.AppendLine(target.Assistant.Content.Trim());
+        }
+
+        if (target.ToolSummaries.Count > 0)
+        {
+            prompt.AppendLine();
+            prompt.AppendLine("相关工具调用记录，包含成功或失败结果。请基于这些记录继续，避免重复调用相同工具:");
+            foreach (var toolResult in target.ToolSummaries)
             {
                 prompt.AppendLine(toolResult);
             }
         }
 
         prompt.AppendLine();
-        prompt.AppendLine("现在请继续补全这条回复。");
+        prompt.AppendLine("现在请继续完成最近这轮任务。");
         return prompt.ToString();
+    }
+
+    private static ContinuationTarget? FindContinuationTarget(AgentConversationDetail detail, long currentUserMessageId)
+    {
+        var orderedMessages = detail.Messages
+            .Where(m => m.Role is AgentMessageRole.User or AgentMessageRole.Assistant)
+            .Where(m => currentUserMessageId <= 0 || m.Id != currentUserMessageId)
+            .OrderBy(m => m.Sequence)
+            .ThenBy(m => m.Id)
+            .ToArray();
+
+        var assistants = orderedMessages
+            .Where(m => m.Role == AgentMessageRole.Assistant)
+            .OrderByDescending(m => m.Sequence)
+            .ThenByDescending(m => m.Id)
+            .ToArray();
+
+        var recentAssistant = assistants.FirstOrDefault(m =>
+            !string.IsNullOrWhiteSpace(m.Content)
+            || !string.IsNullOrWhiteSpace(m.ActivityText)
+            || !string.IsNullOrWhiteSpace(m.Error));
+        var recentTool = detail.ToolCalls
+            .OrderByDescending(t => t.CreatedUtc)
+            .ThenByDescending(t => t.Id)
+            .FirstOrDefault();
+        if (recentTool is not null)
+        {
+            var toolAssistant = recentTool.MessageId is long assistantId
+                ? assistants.FirstOrDefault(m => m.Id == assistantId)
+                : null;
+            var toolIsLatestTurn = recentAssistant is null
+                || recentTool.MessageId == recentAssistant.Id
+                || recentTool.CreatedUtc >= recentAssistant.CreatedUtc;
+            if (toolIsLatestTurn)
+            {
+                var sourceUser = FindSourceUser(orderedMessages, toolAssistant);
+                sourceUser ??= orderedMessages
+                    .Where(m => m.Role == AgentMessageRole.User)
+                    .OrderByDescending(m => m.Sequence)
+                    .ThenByDescending(m => m.Id)
+                    .FirstOrDefault();
+                return new ContinuationTarget(
+                    sourceUser,
+                    toolAssistant,
+                    BuildToolSummariesForAssistant(detail.ToolCalls, toolAssistant?.Id, recentTool.Id));
+            }
+        }
+
+        if (recentAssistant is not null)
+        {
+            return new ContinuationTarget(
+                FindSourceUser(orderedMessages, recentAssistant),
+                recentAssistant,
+                BuildToolSummariesForAssistant(detail.ToolCalls, recentAssistant.Id, null));
+        }
+
+        var recentUser = orderedMessages
+            .Where(m => m.Role == AgentMessageRole.User)
+            .OrderByDescending(m => m.Sequence)
+            .ThenByDescending(m => m.Id)
+            .FirstOrDefault();
+        return recentUser is null
+            ? null
+            : new ContinuationTarget(recentUser, null, Array.Empty<string>());
+    }
+
+    private static AgentMessage? FindSourceUser(IReadOnlyList<AgentMessage> orderedMessages, AgentMessage? assistant)
+    {
+        if (assistant is null)
+        {
+            return null;
+        }
+
+        return orderedMessages
+            .Where(m => m.Role == AgentMessageRole.User && m.Sequence < assistant.Sequence)
+            .OrderByDescending(m => m.Sequence)
+            .ThenByDescending(m => m.Id)
+            .FirstOrDefault();
+    }
+
+    private static IReadOnlyList<string> BuildToolSummariesForAssistant(
+        IReadOnlyList<AgentToolCall> toolCalls,
+        long? assistantMessageId,
+        long? fallbackToolId)
+    {
+        var tools = toolCalls
+            .Where(t => assistantMessageId is > 0
+                ? t.MessageId == assistantMessageId
+                : fallbackToolId is not null && t.Id == fallbackToolId)
+            .OrderBy(t => t.CreatedUtc)
+            .Select(t => $"{t.ToolName}: {TrimForPrompt(FormatToolCallForContext(t), 1600)}")
+            .ToArray();
+        if (tools.Length > 0 || fallbackToolId is null)
+        {
+            return tools;
+        }
+
+        return toolCalls
+            .Where(t => t.Id == fallbackToolId)
+            .Select(t => $"{t.ToolName}: {TrimForPrompt(FormatToolCallForContext(t), 1600)}")
+            .ToArray();
     }
 
     private static bool IsContinuationRequest(string message)
@@ -1342,80 +1866,16 @@ public sealed class AgentService : IAgentService
             or "接着生成"
             or "说下去"
             or "继续上面"
-            or "继续刚才";
+            or "继续刚才"
+            or "continue"
+            or "goon";
     }
 
     private static string TrimForPrompt(string value, int maxLength)
         => value.Length <= maxLength ? value : value[..maxLength] + Environment.NewLine + "...";
 
-    private static IReadOnlyList<AgentMessage> BuildCleanChatHistory(
-        IReadOnlyList<AgentMessage> messages,
-        long includeUserBeforeAssistantId)
-    {
-        var ordered = messages
-            .OrderBy(m => m.Sequence)
-            .ThenBy(m => m.Id)
-            .ToArray();
-        var result = new List<AgentMessage>();
-        AgentMessage? pendingUser = null;
-
-        foreach (var message in ordered)
-        {
-            if (message.Role == AgentMessageRole.User)
-            {
-                pendingUser = IsCleanUserHistoryMessage(message) ? message : null;
-                continue;
-            }
-
-            if (message.Role != AgentMessageRole.Assistant)
-            {
-                continue;
-            }
-
-            if (pendingUser is not null && IsCleanAssistantHistoryMessage(message))
-            {
-                result.Add(pendingUser);
-                result.Add(message);
-            }
-
-            pendingUser = null;
-        }
-
-        if (includeUserBeforeAssistantId > 0)
-        {
-            var assistant = ordered.FirstOrDefault(m => m.Id == includeUserBeforeAssistantId && m.Role == AgentMessageRole.Assistant);
-            var sourceUser = assistant is null
-                ? null
-                : ordered
-                    .Where(m => m.Role == AgentMessageRole.User
-                        && m.Sequence < assistant.Sequence
-                        && IsCleanUserHistoryMessage(m))
-                    .OrderByDescending(m => m.Sequence)
-                    .ThenByDescending(m => m.Id)
-                    .FirstOrDefault();
-            if (sourceUser is not null && result.All(m => m.Id != sourceUser.Id))
-            {
-                result.Add(sourceUser);
-            }
-        }
-
-        return result;
-    }
-
-    private static bool IsCleanUserHistoryMessage(AgentMessage message)
-        => message.Status == AgentMessageStatus.Complete
-            && !string.IsNullOrWhiteSpace(message.Content);
-
-    private static bool IsCleanAssistantHistoryMessage(AgentMessage message)
-        => message.Status == AgentMessageStatus.Complete
-            && (string.IsNullOrWhiteSpace(message.ActivityText) || IsStoppedByUserMessage(message))
-            && string.IsNullOrWhiteSpace(message.Error)
-            && !string.IsNullOrWhiteSpace(message.Content)
-            && !string.Equals(message.Content.Trim(), WaitingForToolApprovalText, StringComparison.Ordinal)
-            && !string.Equals(message.Content.Trim(), "正在思考...", StringComparison.Ordinal);
-
-    private static bool IsStoppedByUserMessage(AgentMessage message)
-        => string.Equals(message.ActivityText?.Trim(), StoppedByUserActivityText, StringComparison.Ordinal);
+    private static string EmptyFallback(string value)
+        => string.IsNullOrWhiteSpace(value) ? "无" : value;
 
     private static ChatRole ToChatRole(AgentMessageRole role)
         => role switch
@@ -1615,4 +2075,24 @@ public sealed class AgentService : IAgentService
         AgentMessage? UserMessage,
         AgentMessage? AssistantMessage,
         CancellationToken CancellationToken);
+
+    private sealed record AgentContextPackage(
+        AgentConversationDetail Detail,
+        IReadOnlyList<Microsoft.Extensions.AI.ChatMessage> Messages,
+        AgentContextStatus Status,
+        AgentContextSummary? Summary,
+        IReadOnlyList<ContextLedgerEntry> VisibleEntries);
+
+    private sealed record ContextLedgerEntry(
+        DateTime CreatedUtc,
+        int MessageSequence,
+        int ToolCallId,
+        ChatRole Role,
+        string Content,
+        bool IsTool);
+
+    private sealed record ContinuationTarget(
+        AgentMessage? SourceUser,
+        AgentMessage? Assistant,
+        IReadOnlyList<string> ToolSummaries);
 }

@@ -1007,7 +1007,8 @@ public sealed class AgentToolExecutor
             _settings.AiSearchApiKeyPreview,
             _settings.AiTrustedDirectories,
             _settings.AiShellCommandWhitelist,
-            _settings.AiMcpServersJson);
+            _settings.AiMcpServersJson,
+            _settings.AiContextWindowTokens);
     }
 
     private static string FormatSearchResults(IEnumerable<WebSearchItem> items)

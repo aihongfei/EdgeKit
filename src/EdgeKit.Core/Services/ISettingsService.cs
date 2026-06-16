@@ -111,6 +111,8 @@ public interface ISettingsService
 
     string AiMcpServersJson { get; set; }
 
+    int AiContextWindowTokens { get; set; }
+
     /// <summary>加载持久化的设置。</summary>
     void Load();
 
