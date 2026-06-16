@@ -55,6 +55,14 @@ public sealed class AgentTimelineItemViewModel : INotifyPropertyChanged
 
     public Visibility ContentVisibility => string.IsNullOrWhiteSpace(Content) ? Visibility.Collapsed : Visibility.Visible;
 
+    public Visibility PlainContentVisibility => ContentVisibility == Visibility.Visible && !UseMarkdownPreview
+        ? Visibility.Visible
+        : Visibility.Collapsed;
+
+    public Visibility MarkdownContentVisibility => ContentVisibility == Visibility.Visible && UseMarkdownPreview
+        ? Visibility.Visible
+        : Visibility.Collapsed;
+
     public Visibility ActivityVisibility => _message?.Role == AgentMessageRole.Assistant && !string.IsNullOrWhiteSpace(ActivityText)
         ? Visibility.Visible
         : Visibility.Collapsed;
@@ -79,6 +87,8 @@ public sealed class AgentTimelineItemViewModel : INotifyPropertyChanged
     };
 
     public bool IsUser => _message?.Role == AgentMessageRole.User;
+
+    public bool UseMarkdownPreview => _message?.Role == AgentMessageRole.Assistant && !_isStreaming;
 
     public HorizontalAlignment BubbleAlignment => IsUser ? HorizontalAlignment.Right : HorizontalAlignment.Left;
 
@@ -208,7 +218,7 @@ public sealed class AgentTimelineItemViewModel : INotifyPropertyChanged
     {
         _message = message;
         _streamedContent = message.Content;
-        _isStreaming = message.Status == AgentMessageStatus.Pending;
+        _isStreaming = false;
         RaiseAll();
     }
 
@@ -313,10 +323,13 @@ public sealed class AgentTimelineItemViewModel : INotifyPropertyChanged
         Raise(nameof(Content));
         Raise(nameof(ActivityText));
         Raise(nameof(ContentVisibility));
+        Raise(nameof(PlainContentVisibility));
+        Raise(nameof(MarkdownContentVisibility));
         Raise(nameof(LoadingVisibility));
         Raise(nameof(ActivityVisibility));
         Raise(nameof(ActivityProgressVisibility));
         Raise(nameof(ActivityIconVisibility));
+        Raise(nameof(UseMarkdownPreview));
         Raise(nameof(IsStreaming));
         Raise(nameof(StreamedContent));
     }
@@ -334,11 +347,14 @@ public sealed class AgentTimelineItemViewModel : INotifyPropertyChanged
             nameof(ToolVisibility),
             nameof(LoadingVisibility),
             nameof(ContentVisibility),
+            nameof(PlainContentVisibility),
+            nameof(MarkdownContentVisibility),
             nameof(ActivityVisibility),
             nameof(ActivityProgressVisibility),
             nameof(ActivityIconVisibility),
             nameof(ToolActionVisibility),
             nameof(RoleText),
+            nameof(UseMarkdownPreview),
             nameof(Content),
             nameof(ActivityText),
             nameof(TimeText),

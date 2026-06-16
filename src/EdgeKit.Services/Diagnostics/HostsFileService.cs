@@ -1,11 +1,10 @@
-using System.ComponentModel;
-using System.Diagnostics;
 using System.Globalization;
 using System.Net;
 using System.Security;
 using System.Security.Principal;
 using System.Text;
 using EdgeKit.Native;
+using EdgeKit.Services.SystemOperations;
 
 namespace EdgeKit.Services.Diagnostics;
 
@@ -17,6 +16,17 @@ public sealed class HostsFileService
     public const string ElevatedSaveArgument = "--edgekit-save-hosts";
 
     private static readonly Encoding HostsEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+
+    private readonly ElevatedOperationService? _elevation;
+
+    public HostsFileService()
+    {
+    }
+
+    public HostsFileService(ElevatedOperationService elevation)
+    {
+        _elevation = elevation;
+    }
 
     public HostsFileSnapshot ReadSnapshot()
     {
@@ -135,7 +145,20 @@ public sealed class HostsFileService
     }
 
     public async Task<HostsSaveResult> SaveAsync(string content, CancellationToken cancellationToken = default)
-        => await Task.Run(() => Save(content), cancellationToken).ConfigureAwait(false);
+    {
+        if (IsAdministrator() || _elevation is null)
+        {
+            return await Task.Run(() => SaveAsAdministrator(content), cancellationToken).ConfigureAwait(false);
+        }
+
+        var result = await _elevation.RunElevatedAsync(
+            ElevatedOperationIds.HostsSave,
+            new HostsSavePayload(content),
+            "diagnostics:hosts",
+            "保存 Windows hosts 文件",
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+        return new HostsSaveResult(result.Success, result.Message);
+    }
 
     public async Task<HostsSaveResult> RestoreLatestBackupAsync(CancellationToken cancellationToken = default)
     {
@@ -226,8 +249,13 @@ public sealed class HostsFileService
             }
 
             var content = File.ReadAllText(fullPath, Encoding.UTF8);
-            BackupCurrentHosts();
-            File.WriteAllText(HostsPath, content, HostsEncoding);
+            var result = SaveAsAdministrator(content);
+            if (!result.Success)
+            {
+                WriteResult(fullPath, result.Message);
+                return 1;
+            }
+
             WriteResult(fullPath, "hosts 已保存");
             return 0;
         }
@@ -246,68 +274,17 @@ public sealed class HostsFileService
         }
     }
 
-    private static HostsSaveResult Save(string content)
+    public static HostsSaveResult SaveAsAdministrator(string content)
     {
         EnsureAppDirectories();
 
-        if (IsAdministrator())
-        {
-            try
-            {
-                BackupCurrentHosts();
-                File.WriteAllText(HostsPath, content, HostsEncoding);
-                return new HostsSaveResult(true, "hosts 已保存");
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                return new HostsSaveResult(false, "保存失败：" + ex.Message);
-            }
-        }
-
-        return SaveWithElevation(content);
-    }
-
-    private static HostsSaveResult SaveWithElevation(string content)
-    {
         try
         {
-            var requestPath = Path.Combine(PendingDirectory, $"hosts-{DateTime.Now:yyyyMMdd-HHmmss}-{Guid.NewGuid():N}.txt");
-            File.WriteAllText(requestPath, content, HostsEncoding);
-
-            var processPath = Environment.ProcessPath;
-            if (string.IsNullOrWhiteSpace(processPath))
-            {
-                return new HostsSaveResult(false, "无法定位 EdgeKit 可执行文件");
-            }
-
-            using var process = Process.Start(new ProcessStartInfo
-            {
-                FileName = processPath,
-                Arguments = $"{ElevatedSaveArgument} {QuoteArgument(requestPath)}",
-                UseShellExecute = true,
-                Verb = "runas",
-                WindowStyle = ProcessWindowStyle.Hidden
-            });
-
-            if (process is null)
-            {
-                return new HostsSaveResult(false, "无法启动管理员保存进程");
-            }
-
-            process.WaitForExit();
-            var resultText = ReadResult(requestPath);
-            TryDelete(requestPath);
-            TryDelete(GetResultPath(requestPath));
-
-            return process.ExitCode == 0
-                ? new HostsSaveResult(true, string.IsNullOrWhiteSpace(resultText) ? "hosts 已保存" : resultText)
-                : new HostsSaveResult(false, string.IsNullOrWhiteSpace(resultText) ? "管理员保存失败" : resultText);
+            BackupCurrentHosts();
+            File.WriteAllText(HostsPath, content, HostsEncoding);
+            return new HostsSaveResult(true, "hosts 已保存");
         }
-        catch (Win32Exception ex) when (ex.NativeErrorCode == 1223)
-        {
-            return new HostsSaveResult(false, "已取消管理员授权");
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or Win32Exception)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException)
         {
             return new HostsSaveResult(false, "保存失败：" + ex.Message);
         }
@@ -413,34 +390,11 @@ public sealed class HostsFileService
             .Replace('\r', '\n')
             .Split('\n');
 
-    private static string QuoteArgument(string value)
-        => "\"" + value.Replace("\"", "\\\"", StringComparison.Ordinal) + "\"";
-
     private static void WriteResult(string requestPath, string message)
         => File.WriteAllText(GetResultPath(requestPath), message, Encoding.UTF8);
 
-    private static string ReadResult(string requestPath)
-        => File.Exists(GetResultPath(requestPath))
-            ? File.ReadAllText(GetResultPath(requestPath), Encoding.UTF8)
-            : string.Empty;
-
     private static string GetResultPath(string requestPath)
         => requestPath + ".result";
-
-    private static void TryDelete(string path)
-    {
-        try
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
-        catch
-        {
-            // Cleanup is best effort.
-        }
-    }
 
     private static string HostsPath
     {

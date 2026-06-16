@@ -17,6 +17,8 @@ public sealed partial class AgentChatPage : Page
 
     private readonly ObservableCollection<AgentTimelineItemViewModel> _timeline = new();
     private readonly HashSet<long> _toolActionsInProgress = new();
+    private readonly HashSet<long> _titleGeneratingConversationIds = new();
+    private readonly Queue<AgentStreamEvent> _pendingStreamEvents = new();
 
     private IAgentService? _agent;
     private long _selectedConversationId;
@@ -24,6 +26,7 @@ public sealed partial class AgentChatPage : Page
     private bool _settingsLoading;
     private bool _sending;
     private bool _conversationDeleteDialogOpen;
+    private bool _streamFlushScheduled;
     private AgentTimelineItemViewModel? _streamingAssistantItem;
     private CancellationTokenSource? _statusAutoCloseCts;
 
@@ -85,7 +88,7 @@ public sealed partial class AgentChatPage : Page
         {
             var selected = keepSelection ? _selectedConversationId : 0;
             var items = _agent.GetConversations()
-                .Select(c => new AgentConversationViewModel(c))
+                .Select(c => new AgentConversationViewModel(c, _titleGeneratingConversationIds.Contains(c.Id)))
                 .ToList();
 
             ConversationList.ItemsSource = items;
@@ -323,8 +326,10 @@ public sealed partial class AgentChatPage : Page
         {
             await foreach (var item in _agent.SendStreamingAsync(conversationId, text))
             {
-                await DispatcherQueue.EnqueueAsync(() => ApplyStreamEvent(item));
+                EnqueueStreamEvent(item);
             }
+
+            await FlushPendingStreamEventsAsync(force: true);
 
             if (shouldGenerateTitle)
             {
@@ -334,13 +339,59 @@ public sealed partial class AgentChatPage : Page
         finally
         {
             _streamingAssistantItem = null;
+            _pendingStreamEvents.Clear();
+            _streamFlushScheduled = false;
             SetBusy(false);
             PromptBox.Focus(FocusState.Programmatic);
             LoadConversations(keepSelection: true);
         }
     }
 
-    private void ApplyStreamEvent(AgentStreamEvent item)
+    private void EnqueueStreamEvent(AgentStreamEvent item)
+    {
+        _pendingStreamEvents.Enqueue(item);
+        if (_streamFlushScheduled)
+        {
+            return;
+        }
+
+        _streamFlushScheduled = true;
+        DispatcherQueue.TryEnqueue(
+            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+            () =>
+            {
+                _streamFlushScheduled = false;
+                FlushPendingStreamEvents();
+            });
+    }
+
+    private Task FlushPendingStreamEventsAsync(bool force = false)
+        => DispatcherQueue.EnqueueAsync(() =>
+        {
+            if (force)
+            {
+                _streamFlushScheduled = false;
+            }
+
+            FlushPendingStreamEvents();
+        });
+
+    private void FlushPendingStreamEvents()
+    {
+        if (_pendingStreamEvents.Count == 0)
+        {
+            return;
+        }
+
+        while (_pendingStreamEvents.Count > 0)
+        {
+            ApplyStreamEvent(_pendingStreamEvents.Dequeue(), scroll: false);
+        }
+
+        ScrollMessagesToEnd(force: true);
+    }
+
+    private void ApplyStreamEvent(AgentStreamEvent item, bool scroll = true)
     {
         if (item.UserMessage is not null)
         {
@@ -392,7 +443,10 @@ public sealed partial class AgentChatPage : Page
             _streamingAssistantItem = null;
         }
 
-        ScrollMessagesToEnd(force: true);
+        if (scroll)
+        {
+            ScrollMessagesToEnd(force: true);
+        }
     }
 
     private AgentTimelineItemViewModel UpsertMessage(AgentMessage message)
@@ -407,7 +461,7 @@ public sealed partial class AgentChatPage : Page
 
         var item = new AgentTimelineItemViewModel(message)
         {
-            IsStreaming = message.Status == AgentMessageStatus.Pending,
+            IsStreaming = false,
             StreamedContent = message.Content
         };
         _timeline.Add(item);
@@ -545,16 +599,29 @@ public sealed partial class AgentChatPage : Page
         }
 
         var agent = _agent;
+        if (!_titleGeneratingConversationIds.Add(conversationId))
+        {
+            return;
+        }
+
+        LoadConversations(keepSelection: true);
         _ = Task.Run(async () =>
         {
             try
             {
                 await agent.TryGenerateConversationTitleAsync(conversationId, firstUserMessage).ConfigureAwait(false);
-                DispatcherQueue.TryEnqueue(() => LoadConversations(keepSelection: true));
             }
             catch (Exception ex)
             {
                 Log.Debug(ex, "Agent conversation title generation failed");
+            }
+            finally
+            {
+                DispatcherQueue.TryEnqueue(() =>
+                {
+                    _titleGeneratingConversationIds.Remove(conversationId);
+                    LoadConversations(keepSelection: true);
+                });
             }
         });
     }

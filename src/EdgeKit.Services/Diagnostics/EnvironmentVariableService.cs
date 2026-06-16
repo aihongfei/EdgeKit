@@ -1,11 +1,10 @@
 using System.Collections;
-using System.ComponentModel;
-using System.Diagnostics;
 using System.Security;
 using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
 using EdgeKit.Native;
+using EdgeKit.Services.SystemOperations;
 
 namespace EdgeKit.Services.Diagnostics;
 
@@ -18,6 +17,17 @@ public sealed class EnvironmentVariableService
     {
         WriteIndented = true
     };
+
+    private readonly ElevatedOperationService? _elevation;
+
+    public EnvironmentVariableService()
+    {
+    }
+
+    public EnvironmentVariableService(ElevatedOperationService elevation)
+    {
+        _elevation = elevation;
+    }
 
     public EnvironmentVariableSnapshot ReadSnapshot()
     {
@@ -69,18 +79,16 @@ public sealed class EnvironmentVariableService
         string name,
         string value,
         CancellationToken cancellationToken = default)
-        => await Task.Run(() => Save(target, name, value, delete: false), cancellationToken)
-            .ConfigureAwait(false);
+        => await SaveAsyncCore(target, name, value, delete: false, cancellationToken).ConfigureAwait(false);
 
     public async Task<ToolActionResult> DeleteAsync(
         EnvironmentVariableTarget target,
         string name,
         CancellationToken cancellationToken = default)
-        => await Task.Run(() => Save(target, name, string.Empty, delete: true), cancellationToken)
-            .ConfigureAwait(false);
+        => await SaveAsyncCore(target, name, string.Empty, delete: true, cancellationToken).ConfigureAwait(false);
 
     public async Task<ToolActionResult> RestoreBackupAsync(string backupPath, CancellationToken cancellationToken = default)
-        => await Task.Run(() => RestoreBackup(backupPath), cancellationToken).ConfigureAwait(false);
+        => await RestoreBackupAsyncCore(backupPath, cancellationToken).ConfigureAwait(false);
 
     public string BuildReport(IReadOnlyList<EnvironmentVariableEntry> entries)
     {
@@ -123,22 +131,14 @@ public sealed class EnvironmentVariableService
                 return 4;
             }
 
-            BackupCurrent(target);
-            if (request.RestoreVariables is not null)
-            {
-                RestoreVariables(target, request.RestoreVariables);
-                BroadcastEnvironmentChanged();
-                WriteResult(fullPath, "环境变量备份已恢复");
-                return 0;
-            }
-
-            Environment.SetEnvironmentVariable(
+            var result = ApplyAsAdministrator(
+                target,
                 request.Name,
-                request.Delete ? null : request.Value,
-                target);
-            BroadcastEnvironmentChanged();
-            WriteResult(fullPath, request.Delete ? "环境变量已删除" : "环境变量已保存");
-            return 0;
+                request.Value,
+                request.Delete,
+                request.RestoreVariables);
+            WriteResult(fullPath, result.Message);
+            return result.Success ? 0 : 1;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException or JsonException or ArgumentException)
         {
@@ -155,7 +155,12 @@ public sealed class EnvironmentVariableService
         }
     }
 
-    private static ToolActionResult Save(EnvironmentVariableTarget target, string name, string value, bool delete)
+    private async Task<ToolActionResult> SaveAsyncCore(
+        EnvironmentVariableTarget target,
+        string name,
+        string value,
+        bool delete,
+        CancellationToken cancellationToken)
     {
         if (!ValidateName(name, out var message))
         {
@@ -164,30 +169,31 @@ public sealed class EnvironmentVariableService
 
         if (target == EnvironmentVariableTarget.Machine && !IsAdministrator())
         {
-            return SaveWithElevation(new EnvironmentVariableWriteRequest(
-                target.ToString(),
-                name.Trim(),
-                value,
-                delete,
-                null));
+            if (_elevation is null)
+            {
+                return new ToolActionResult(false, "需要管理员权限，但提权服务不可用");
+            }
+
+            var result = await _elevation.RunElevatedAsync(
+                ElevatedOperationIds.EnvironmentVariableSave,
+                new EnvironmentVariableSavePayload(
+                    target.ToString(),
+                    name.Trim(),
+                    value,
+                    delete,
+                    null),
+                "diagnostics:environment",
+                delete ? "删除系统环境变量 " + name.Trim() : "保存系统环境变量 " + name.Trim(),
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+            return result.ToToolActionResult();
         }
 
-        try
-        {
-            BackupCurrent(target);
-            Environment.SetEnvironmentVariable(name.Trim(), delete ? null : value, target);
-            BroadcastEnvironmentChanged();
-            return new ToolActionResult(
-                true,
-                (delete ? "环境变量已删除" : "环境变量已保存") + "，新进程生效，已运行进程可能需重启");
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException or ArgumentException)
-        {
-            return new ToolActionResult(false, "保存失败：" + ex.Message);
-        }
+        return await Task.Run(
+            () => ApplyAsAdministrator(target, name.Trim(), value, delete, null),
+            cancellationToken).ConfigureAwait(false);
     }
 
-    private static ToolActionResult RestoreBackup(string backupPath)
+    private async Task<ToolActionResult> RestoreBackupAsyncCore(string backupPath, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(backupPath))
         {
@@ -219,18 +225,28 @@ public sealed class EnvironmentVariableService
 
             if (target == EnvironmentVariableTarget.Machine && !IsAdministrator())
             {
-                return SaveWithElevation(new EnvironmentVariableWriteRequest(
-                    target.ToString(),
-                    string.Empty,
-                    string.Empty,
-                    false,
-                    backup.Variables));
+                if (_elevation is null)
+                {
+                    return new ToolActionResult(false, "需要管理员权限，但提权服务不可用");
+                }
+
+                var result = await _elevation.RunElevatedAsync(
+                    ElevatedOperationIds.EnvironmentVariableSave,
+                    new EnvironmentVariableSavePayload(
+                        target.ToString(),
+                        string.Empty,
+                        string.Empty,
+                        false,
+                        backup.Variables),
+                    "diagnostics:environment",
+                    "恢复系统环境变量备份",
+                    cancellationToken: cancellationToken).ConfigureAwait(false);
+                return result.ToToolActionResult();
             }
 
-            BackupCurrent(target);
-            RestoreVariables(target, backup.Variables);
-            BroadcastEnvironmentChanged();
-            return new ToolActionResult(true, "环境变量备份已恢复，新进程生效，已运行进程可能需重启");
+            return await Task.Run(
+                () => ApplyAsAdministrator(target, string.Empty, string.Empty, delete: false, backup.Variables),
+                cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException or JsonException)
         {
@@ -238,50 +254,75 @@ public sealed class EnvironmentVariableService
         }
     }
 
-    private static ToolActionResult SaveWithElevation(EnvironmentVariableWriteRequest request)
+    public static ToolActionResult ApplyAsAdministrator(
+        EnvironmentVariableTarget target,
+        string name,
+        string value,
+        bool delete,
+        IReadOnlyDictionary<string, string>? restoreVariables)
     {
+        if (restoreVariables is null && !ValidateName(name, out var message))
+        {
+            return new ToolActionResult(false, message);
+        }
+
         try
         {
-            EnsureAppDirectories();
-            var requestPath = Path.Combine(PendingDirectory, $"env-{DateTime.Now:yyyyMMdd-HHmmss}-{Guid.NewGuid():N}.json");
-            File.WriteAllText(requestPath, JsonSerializer.Serialize(request, JsonOptions), Encoding.UTF8);
-
-            var processPath = Environment.ProcessPath;
-            if (string.IsNullOrWhiteSpace(processPath))
+            BackupCurrent(target);
+            if (restoreVariables is not null)
             {
-                return new ToolActionResult(false, "无法定位 EdgeKit 可执行文件");
+                RestoreVariables(target, restoreVariables);
+                BroadcastEnvironmentChanged();
+                return new ToolActionResult(true, "环境变量备份已恢复，新进程生效，已运行进程可能需重启");
             }
 
-            using var process = Process.Start(new ProcessStartInfo
-            {
-                FileName = processPath,
-                Arguments = $"{ElevatedSaveArgument} {QuoteArgument(requestPath)}",
-                UseShellExecute = true,
-                Verb = "runas",
-                WindowStyle = ProcessWindowStyle.Hidden
-            });
-
-            if (process is null)
-            {
-                return new ToolActionResult(false, "无法启动管理员保存进程");
-            }
-
-            process.WaitForExit();
-            var resultText = ReadResult(requestPath);
-            TryDelete(requestPath);
-            TryDelete(GetResultPath(requestPath));
-
-            return process.ExitCode == 0
-                ? new ToolActionResult(true, (string.IsNullOrWhiteSpace(resultText) ? "环境变量已保存" : resultText) + "，新进程生效，已运行进程可能需重启")
-                : new ToolActionResult(false, string.IsNullOrWhiteSpace(resultText) ? "管理员保存失败" : resultText);
+            Environment.SetEnvironmentVariable(name.Trim(), delete ? null : value, target);
+            BroadcastEnvironmentChanged();
+            return new ToolActionResult(
+                true,
+                (delete ? "环境变量已删除" : "环境变量已保存") + "，新进程生效，已运行进程可能需重启");
         }
-        catch (Win32Exception ex) when (ex.NativeErrorCode == 1223)
-        {
-            return new ToolActionResult(false, "已取消管理员授权");
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or Win32Exception)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException or ArgumentException)
         {
             return new ToolActionResult(false, "保存失败：" + ex.Message);
+        }
+    }
+
+    public static ToolActionResult RestoreBackupAsAdministrator(string backupPath)
+    {
+        if (string.IsNullOrWhiteSpace(backupPath))
+        {
+            return new ToolActionResult(false, "请选择一个环境变量备份");
+        }
+
+        var fullPath = Path.GetFullPath(backupPath);
+        var backupRoot = Path.GetFullPath(BackupDirectory);
+        if (!fullPath.StartsWith(backupRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+            || !Path.GetFileName(fullPath).EndsWith(".env.json", StringComparison.OrdinalIgnoreCase))
+        {
+            return new ToolActionResult(false, "备份路径不在 EdgeKit 环境变量备份目录内");
+        }
+
+        if (!File.Exists(fullPath))
+        {
+            return new ToolActionResult(false, "环境变量备份不存在");
+        }
+
+        try
+        {
+            var backup = JsonSerializer.Deserialize<EnvironmentVariableBackupPayload>(
+                File.ReadAllText(fullPath, Encoding.UTF8),
+                JsonOptions);
+            if (backup is null || !TryParseTarget(backup.Target, out var target))
+            {
+                return new ToolActionResult(false, "环境变量备份无效");
+            }
+
+            return ApplyAsAdministrator(target, string.Empty, string.Empty, delete: false, backup.Variables);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException or JsonException)
+        {
+            return new ToolActionResult(false, "恢复失败：" + ex.Message);
         }
     }
 
@@ -436,34 +477,11 @@ public sealed class EnvironmentVariableService
         Directory.CreateDirectory(PendingDirectory);
     }
 
-    private static string QuoteArgument(string value)
-        => "\"" + value.Replace("\"", "\\\"", StringComparison.Ordinal) + "\"";
-
     private static void WriteResult(string requestPath, string message)
         => File.WriteAllText(GetResultPath(requestPath), message, Encoding.UTF8);
 
-    private static string ReadResult(string requestPath)
-        => File.Exists(GetResultPath(requestPath))
-            ? File.ReadAllText(GetResultPath(requestPath), Encoding.UTF8)
-            : string.Empty;
-
     private static string GetResultPath(string requestPath)
         => requestPath + ".result";
-
-    private static void TryDelete(string path)
-    {
-        try
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
-        catch
-        {
-            // Cleanup is best effort.
-        }
-    }
 
     private static string EdgeKitDirectory
         => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "EdgeKit");

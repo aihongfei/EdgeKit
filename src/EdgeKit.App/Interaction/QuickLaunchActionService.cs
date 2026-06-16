@@ -60,18 +60,11 @@ public sealed class QuickLaunchActionService
             return false;
         }
 
-        // 文件路径 → Process.Start + runas
         if (IsFileSystemPath(target))
         {
             try
             {
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = NormalizePath(target),
-                    UseShellExecute = true,
-                    Verb = "runas"
-                });
-                return true;
+                return ElevatedProcessLauncher.Start(NormalizePath(target));
             }
             catch (Exception ex)
             {
@@ -92,13 +85,7 @@ public sealed class QuickLaunchActionService
         {
             try
             {
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = NormalizePath(resolvedPath),
-                    UseShellExecute = true,
-                    Verb = "runas"
-                });
-                return true;
+                return ElevatedProcessLauncher.Start(NormalizePath(resolvedPath));
             }
             catch (Exception ex)
             {

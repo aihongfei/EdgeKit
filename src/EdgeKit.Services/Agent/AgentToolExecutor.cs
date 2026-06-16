@@ -9,6 +9,7 @@ using EdgeKit.Core.Clipboard;
 using EdgeKit.Core.Services;
 using EdgeKit.Services.Diagnostics;
 using EdgeKit.Services.Settings;
+using EdgeKit.Services.SystemOperations;
 using EdgeKit.Services.Text;
 
 namespace EdgeKit.Services.Agent;
@@ -30,6 +31,7 @@ public sealed class AgentToolExecutor
     private readonly HttpClient _http;
     private readonly ISettingsService _settings;
     private readonly McpToolService _mcpTools;
+    private readonly ElevatedOperationService _elevation;
 
     public AgentToolExecutor(
         AgentToolRegistry registry,
@@ -41,7 +43,8 @@ public sealed class AgentToolExecutor
         IClipboardRepository clipboard,
         HttpClient http,
         ISettingsService settings,
-        McpToolService mcpTools)
+        McpToolService mcpTools,
+        ElevatedOperationService elevation)
     {
         _registry = registry;
         _diagnostics = diagnostics;
@@ -53,6 +56,7 @@ public sealed class AgentToolExecutor
         _http = http;
         _settings = settings;
         _mcpTools = mcpTools;
+        _elevation = elevation;
     }
 
     public AgentToolDescriptor? Find(string toolId) => _registry.Find(toolId);
@@ -120,7 +124,7 @@ public sealed class AgentToolExecutor
                 "delete_env" => FormatActionResult(await _environment.DeleteAsync(GetTarget(arguments), GetString(arguments, "name"), cancellationToken).ConfigureAwait(false)),
                 "file_lock_delete_recycle" => FormatActionResult(await ExecuteRecycleDeleteAsync(arguments, cancellationToken).ConfigureAwait(false)),
                 "file_lock_kill_delete" => FormatActionResult(await ExecuteKillDeleteAsync(arguments, cancellationToken).ConfigureAwait(false)),
-                "kill_port_owner" => FormatKillPortOwner(arguments),
+                "kill_port_owner" => await KillPortOwnerAsync(arguments, cancellationToken).ConfigureAwait(false),
                 _ => "未知工具: " + toolId
             };
 
@@ -144,7 +148,8 @@ public sealed class AgentToolExecutor
             return descriptor.Id switch
             {
                 "file_write" or "file_patch" => IsTrustedPath(GetString(arguments, "path"), settings.TrustedDirectories),
-                "shell_run" => IsWhitelistedCommand(GetString(arguments, "command"), settings.ShellCommandWhitelist),
+                "shell_run" => !(GetOptionalBool(arguments, "runAsAdministrator") ?? false)
+                    && IsWhitelistedCommand(GetString(arguments, "command"), settings.ShellCommandWhitelist),
                 _ => false
             };
         }
@@ -320,20 +325,39 @@ public sealed class AgentToolExecutor
         var path = NormalizeWritablePath(GetString(arguments, "path"));
         var content = GetOptionalString(arguments, "content");
         var append = GetOptionalBool(arguments, "append") ?? false;
-        var directory = Path.GetDirectoryName(path);
-        if (!string.IsNullOrWhiteSpace(directory))
-        {
-            Directory.CreateDirectory(directory);
-        }
 
-        if (append)
+        try
         {
-            await File.AppendAllTextAsync(path, content, cancellationToken).ConfigureAwait(false);
-            return "已追加写入文件: " + path;
-        }
+            var directory = Path.GetDirectoryName(path);
+            if (!string.IsNullOrWhiteSpace(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
 
-        await File.WriteAllTextAsync(path, content, cancellationToken).ConfigureAwait(false);
-        return "已写入文件: " + path;
+            if (append)
+            {
+                await File.AppendAllTextAsync(path, content, cancellationToken).ConfigureAwait(false);
+                return "已追加写入文件: " + path;
+            }
+
+            await File.WriteAllTextAsync(path, content, cancellationToken).ConfigureAwait(false);
+            return "已写入文件: " + path;
+        }
+        catch (Exception ex) when (ElevatedOperationService.IsAccessDenied(ex) && !_elevation.IsAdministrator)
+        {
+            var result = await _elevation.RunElevatedAsync(
+                ElevatedOperationIds.FileWrite,
+                new FileWritePayload(path, content, append),
+                "agent:file_write",
+                (append ? "追加写入文件 " : "写入文件 ") + path,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (!result.Success)
+            {
+                throw new InvalidOperationException(result.Message);
+            }
+
+            return result.Message;
+        }
     }
 
     private async Task<string> PatchFileAsync(JsonElement arguments, CancellationToken cancellationToken)
@@ -341,21 +365,40 @@ public sealed class AgentToolExecutor
         var path = NormalizeExistingFile(GetString(arguments, "path"));
         var oldText = GetString(arguments, "oldText");
         var newText = GetOptionalString(arguments, "newText");
-        var text = await File.ReadAllTextAsync(path, cancellationToken).ConfigureAwait(false);
-        var index = text.IndexOf(oldText, StringComparison.Ordinal);
-        if (index < 0)
-        {
-            throw new ArgumentException("未找到 oldText，未修改文件。");
-        }
 
-        if (text.IndexOf(oldText, index + oldText.Length, StringComparison.Ordinal) >= 0)
+        try
         {
-            throw new ArgumentException("oldText 出现多次，请提供更精确的文本。");
-        }
+            var text = await File.ReadAllTextAsync(path, cancellationToken).ConfigureAwait(false);
+            var index = text.IndexOf(oldText, StringComparison.Ordinal);
+            if (index < 0)
+            {
+                throw new ArgumentException("未找到 oldText，未修改文件。");
+            }
 
-        var updated = text.Replace(oldText, newText, StringComparison.Ordinal);
-        await File.WriteAllTextAsync(path, updated, cancellationToken).ConfigureAwait(false);
-        return "已替换文件文本: " + path;
+            if (text.IndexOf(oldText, index + oldText.Length, StringComparison.Ordinal) >= 0)
+            {
+                throw new ArgumentException("oldText 出现多次，请提供更精确的文本。");
+            }
+
+            var updated = text.Replace(oldText, newText, StringComparison.Ordinal);
+            await File.WriteAllTextAsync(path, updated, cancellationToken).ConfigureAwait(false);
+            return "已替换文件文本: " + path;
+        }
+        catch (Exception ex) when (ElevatedOperationService.IsAccessDenied(ex) && !_elevation.IsAdministrator)
+        {
+            var result = await _elevation.RunElevatedAsync(
+                ElevatedOperationIds.FilePatch,
+                new FilePatchPayload(path, oldText, newText),
+                "agent:file_patch",
+                "替换文件文本 " + path,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (!result.Success)
+            {
+                throw new InvalidOperationException(result.Message);
+            }
+
+            return result.Message;
+        }
     }
 
     private async Task<ToolActionResult> DeleteFileToRecycleAsync(JsonElement arguments, CancellationToken cancellationToken)
@@ -367,7 +410,19 @@ public sealed class AgentToolExecutor
             throw new ArgumentException("路径不存在: " + path);
         }
 
-        return await _fileLocks.DeleteToRecycleBinAsync(path, isDirectory, cancellationToken).ConfigureAwait(false);
+        var result = await _fileLocks.DeleteToRecycleBinAsync(path, isDirectory, cancellationToken).ConfigureAwait(false);
+        if (result.Success || _elevation.IsAdministrator || !IsLikelyAccessDeniedMessage(result.Message))
+        {
+            return result;
+        }
+
+        var elevated = await _elevation.RunElevatedAsync(
+            ElevatedOperationIds.FileDeleteRecycle,
+            new FileDeleteRecyclePayload(path, isDirectory),
+            "agent:file_delete_recycle",
+            "删除到回收站 " + path,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+        return elevated.ToToolActionResult();
     }
 
     private async Task<string> RunShellAsync(JsonElement arguments, CancellationToken cancellationToken)
@@ -380,6 +435,25 @@ public sealed class AgentToolExecutor
         }
 
         var timeoutSeconds = Math.Clamp(GetOptionalInt(arguments, "timeoutSeconds") ?? 30, 1, 120);
+        var runAsAdministrator = GetOptionalBool(arguments, "runAsAdministrator") ?? false;
+        if (runAsAdministrator)
+        {
+            var result = await _elevation.RunElevatedAsync(
+                ElevatedOperationIds.PowerShellRun,
+                new PowerShellRunPayload(command, workingDirectory ?? string.Empty, timeoutSeconds),
+                "agent:shell_run",
+                "管理员 PowerShell: " + command,
+                timeoutSeconds,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+            var elevatedSummary = FormatShellResult(result.ExitCode ?? -1, result.Stdout, result.Stderr);
+            if (!result.Success)
+            {
+                throw new InvalidOperationException(result.Message + Environment.NewLine + elevatedSummary);
+            }
+
+            return result.Message + Environment.NewLine + elevatedSummary;
+        }
+
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
 
@@ -411,11 +485,7 @@ public sealed class AgentToolExecutor
 
         var output = await outputTask.ConfigureAwait(false);
         var error = await errorTask.ConfigureAwait(false);
-        var summary = "ExitCode: " + process.ExitCode + Environment.NewLine +
-            "Output:" + Environment.NewLine +
-            EmptyFallback(output) + Environment.NewLine +
-            "Error:" + Environment.NewLine +
-            EmptyFallback(error);
+        var summary = FormatShellResult(process.ExitCode, output, error);
         if (process.ExitCode != 0)
         {
             throw new InvalidOperationException(summary);
@@ -511,7 +581,7 @@ public sealed class AgentToolExecutor
         return await _fileLocks.DeleteToRecycleBinAsync(path, isDirectory, cancellationToken).ConfigureAwait(false);
     }
 
-    private string FormatKillPortOwner(JsonElement arguments)
+    private async Task<string> KillPortOwnerAsync(JsonElement arguments, CancellationToken cancellationToken)
     {
         var processId = GetInt(arguments, "processId");
         var port = GetOptionalInt(arguments, "port") ?? 0;
@@ -523,7 +593,18 @@ public sealed class AgentToolExecutor
         }
 
         var result = _diagnostics.KillPortOwner(entry);
-        return result.Success ? result.Message : "失败: " + result.Message;
+        if (result.Success || _elevation.IsAdministrator || !IsLikelyAccessDeniedMessage(result.Message))
+        {
+            return result.Success ? result.Message : "失败: " + result.Message;
+        }
+
+        var elevated = await _elevation.RunElevatedAsync(
+            ElevatedOperationIds.ProcessKill,
+            new ProcessKillPayload(entry.ProcessId, entry.ProcessName),
+            "agent:kill_port_owner",
+            $"结束端口占用进程 PID {entry.ProcessId}",
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+        return elevated.Success ? elevated.Message : "失败: " + elevated.Message;
     }
 
     private async Task<string> SearchBraveAsync(string query, int limit, string apiKey, CancellationToken cancellationToken)
@@ -770,6 +851,19 @@ public sealed class AgentToolExecutor
 
     private static string EmptyFallback(string value)
         => string.IsNullOrWhiteSpace(value) ? "无" : value.Trim();
+
+    private static string FormatShellResult(int exitCode, string output, string error)
+        => "ExitCode: " + exitCode + Environment.NewLine +
+            "Output:" + Environment.NewLine +
+            EmptyFallback(output) + Environment.NewLine +
+            "Error:" + Environment.NewLine +
+            EmptyFallback(error);
+
+    private static bool IsLikelyAccessDeniedMessage(string message)
+        => message.Contains("拒绝访问", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("Access is denied", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("访问被拒绝", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("UnauthorizedAccess", StringComparison.OrdinalIgnoreCase);
 
     private static string FormatTextResult(TextToolResult result)
         => result.IsSuccess ? result.Output : "失败: " + result.Message;

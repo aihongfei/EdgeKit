@@ -48,7 +48,7 @@ internal static class AgentToolSchemas
         ["file_write"] = [Text("path", PathDescription("target file path")), Text("content", "Text content to write."), Boolean("append", "Append instead of overwrite.")],
         ["file_patch"] = [Text("path", PathDescription("target text file path")), Text("oldText", "Exact text to replace."), Text("newText", "Replacement text.")],
         ["file_delete_recycle"] = [Text("path", PathDescription("file or directory path to move to recycle bin"))],
-        ["shell_run"] = [Text("command", "PowerShell command to execute."), Text("workingDirectory", "Optional working directory."), Integer("timeoutSeconds", "Timeout in seconds.")],
+        ["shell_run"] = [Text("command", "PowerShell command to execute."), Text("workingDirectory", "Optional working directory."), Integer("timeoutSeconds", "Timeout in seconds."), Boolean("runAsAdministrator", "Run PowerShell with administrator privileges. Use only when explicitly needed; it requires approval.")],
         ["web_search"] = [Text("query", "Search query."), Integer("limit", "Maximum number of search results.")],
         ["web_fetch"] = [Text("url", "HTTP or HTTPS URL to fetch."), Integer("maxBytes", "Maximum bytes to read.")],
         ["open_windows_settings"] = [Text("uri", "Windows settings URI, starting with ms-settings:.")],

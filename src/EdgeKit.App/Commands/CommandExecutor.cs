@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Threading.Tasks;
+using EdgeKit.App.Interaction;
 using EdgeKit.Core.Commands;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -130,16 +131,23 @@ public sealed class CommandExecutor
             return false;
         }
 
+        if (runAsAdministrator)
+        {
+            var started = ElevatedProcessLauncher.Start(path, Expand(arguments));
+            if (started)
+            {
+                context.HideDrawer();
+            }
+
+            return started;
+        }
+
         var info = new ProcessStartInfo
         {
             FileName = path,
             Arguments = Expand(arguments),
             UseShellExecute = true
         };
-        if (runAsAdministrator)
-        {
-            info.Verb = "runas";
-        }
 
         Process.Start(info);
         context.HideDrawer();
@@ -159,22 +167,30 @@ public sealed class CommandExecutor
             return false;
         }
 
+        var file = Expand(fileName);
+        var args = Expand(arguments);
+        var directory = Expand(workingDirectory);
+        if (runAsAdministrator)
+        {
+            var started = ElevatedProcessLauncher.Start(file, args, directory);
+            if (started && hideDrawer)
+            {
+                context.HideDrawer();
+            }
+
+            return started;
+        }
+
         var info = new ProcessStartInfo
         {
-            FileName = Expand(fileName),
-            Arguments = Expand(arguments),
+            FileName = file,
+            Arguments = args,
             UseShellExecute = true
         };
 
-        var directory = Expand(workingDirectory);
         if (!string.IsNullOrWhiteSpace(directory))
         {
             info.WorkingDirectory = directory;
-        }
-
-        if (runAsAdministrator)
-        {
-            info.Verb = "runas";
         }
 
         Process.Start(info);

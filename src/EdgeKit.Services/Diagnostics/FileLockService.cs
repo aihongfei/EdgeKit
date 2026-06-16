@@ -5,6 +5,7 @@ using System.Security;
 using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
+using EdgeKit.Services.SystemOperations;
 using VBFileSystem = Microsoft.VisualBasic.FileIO.FileSystem;
 
 namespace EdgeKit.Services.Diagnostics;
@@ -35,6 +36,17 @@ public sealed class FileLockService
     {
         WriteIndented = true
     };
+
+    private readonly ElevatedOperationService? _elevation;
+
+    public FileLockService()
+    {
+    }
+
+    public FileLockService(ElevatedOperationService elevation)
+    {
+        _elevation = elevation;
+    }
 
     public Task<FileLockSnapshot> ScanAsync(string targetPath, CancellationToken cancellationToken = default)
         => Task.Run(() => Scan(targetPath, cancellationToken), cancellationToken);
@@ -126,24 +138,12 @@ public sealed class FileLockService
             }
 
             var service = new FileLockService();
-            var result = request.Action switch
-            {
-                ElevatedFileLockRequest.DeleteAction => service.DeleteToRecycleBin(
-                    request.TargetPath,
-                    request.IsDirectory,
-                    allowElevation: false),
-                ElevatedFileLockRequest.KillAction => service.KillProcessesAndDelete(
-                    request.TargetPath,
-                    request.IsDirectory,
-                    request.ProcessIds,
-                    allowElevation: false),
-                ElevatedFileLockRequest.CloseHandleAction => service.CloseHandlesAndDelete(
-                    request.TargetPath,
-                    request.IsDirectory,
-                    request.Handles,
-                    allowElevation: false),
-                _ => new ToolActionResult(false, "未知的文件锁定操作")
-            };
+            var result = service.ExecuteAsAdministrator(
+                request.Action,
+                request.TargetPath,
+                request.IsDirectory,
+                request.ProcessIds,
+                request.Handles);
 
             WriteResult(fullPath, result.Message);
             return result.Success ? 0 : 1;
@@ -162,6 +162,31 @@ public sealed class FileLockService
             return 1;
         }
     }
+
+    public ToolActionResult ExecuteAsAdministrator(
+        string action,
+        string targetPath,
+        bool isDirectory,
+        IReadOnlyList<int> processIds,
+        IReadOnlyList<FileLockHandleSelection> handles)
+        => action switch
+        {
+            ElevatedFileLockRequest.DeleteAction => DeleteToRecycleBin(
+                targetPath,
+                isDirectory,
+                allowElevation: false),
+            ElevatedFileLockRequest.KillAction => KillProcessesAndDelete(
+                targetPath,
+                isDirectory,
+                processIds,
+                allowElevation: false),
+            ElevatedFileLockRequest.CloseHandleAction => CloseHandlesAndDelete(
+                targetPath,
+                isDirectory,
+                handles,
+                allowElevation: false),
+            _ => new ToolActionResult(false, "未知的文件锁定操作")
+        };
 
     private FileLockSnapshot Scan(string targetPath, CancellationToken cancellationToken)
     {
@@ -287,12 +312,12 @@ public sealed class FileLockService
         {
             if (allowElevation && !IsAdministrator())
             {
-                return RunElevatedAction(new ElevatedFileLockRequest
-                {
-                    Action = ElevatedFileLockRequest.DeleteAction,
-                    TargetPath = target.Path,
-                    IsDirectory = target.IsDirectory
-                });
+                return RunElevatedAction(
+                    ElevatedFileLockRequest.DeleteAction,
+                    target.Path,
+                    target.IsDirectory,
+                    Array.Empty<int>(),
+                    Array.Empty<FileLockHandleSelection>());
             }
 
             return new ToolActionResult(false, "删除失败：" + ex.Message);
@@ -349,13 +374,12 @@ public sealed class FileLockService
         {
             if (allowElevation && !IsAdministrator())
             {
-                return RunElevatedAction(new ElevatedFileLockRequest
-                {
-                    Action = ElevatedFileLockRequest.KillAction,
-                    TargetPath = target.Path,
-                    IsDirectory = target.IsDirectory,
-                    ProcessIds = ids.ToList()
-                });
+                return RunElevatedAction(
+                    ElevatedFileLockRequest.KillAction,
+                    target.Path,
+                    target.IsDirectory,
+                    ids,
+                    Array.Empty<FileLockHandleSelection>());
             }
 
             var prefix = killed > 0 ? $"已结束 {killed} 个进程，但" : string.Empty;
@@ -414,13 +438,12 @@ public sealed class FileLockService
         {
             if (allowElevation && !IsAdministrator())
             {
-                return RunElevatedAction(new ElevatedFileLockRequest
-                {
-                    Action = ElevatedFileLockRequest.CloseHandleAction,
-                    TargetPath = target.Path,
-                    IsDirectory = target.IsDirectory,
-                    Handles = selections.ToList()
-                });
+                return RunElevatedAction(
+                    ElevatedFileLockRequest.CloseHandleAction,
+                    target.Path,
+                    target.IsDirectory,
+                    Array.Empty<int>(),
+                    selections);
             }
 
             var detail = failures.Count == 0 ? string.Empty : "；" + string.Join("；", failures.Take(3));
@@ -474,54 +497,29 @@ public sealed class FileLockService
         }
     }
 
-    private ToolActionResult RunElevatedAction(ElevatedFileLockRequest request)
+    private ToolActionResult RunElevatedAction(
+        string action,
+        string targetPath,
+        bool isDirectory,
+        IReadOnlyList<int> processIds,
+        IReadOnlyList<FileLockHandleSelection> handles)
     {
-        try
+        if (_elevation is null)
         {
-            Directory.CreateDirectory(PendingDirectory);
-
-            var requestPath = Path.Combine(
-                PendingDirectory,
-                $"filelock-{DateTime.Now:yyyyMMdd-HHmmss}-{Guid.NewGuid():N}.json");
-            File.WriteAllText(requestPath, JsonSerializer.Serialize(request, JsonOptions), Encoding.UTF8);
-
-            var processPath = Environment.ProcessPath;
-            if (string.IsNullOrWhiteSpace(processPath))
-            {
-                return new ToolActionResult(false, "无法定位 EdgeKit 可执行文件");
-            }
-
-            using var process = Process.Start(new ProcessStartInfo
-            {
-                FileName = processPath,
-                Arguments = $"{ElevatedActionArgument} {QuoteArgument(requestPath)}",
-                UseShellExecute = true,
-                Verb = "runas",
-                WindowStyle = ProcessWindowStyle.Hidden
-            });
-
-            if (process is null)
-            {
-                return new ToolActionResult(false, "无法启动管理员操作进程");
-            }
-
-            process.WaitForExit();
-            var resultText = ReadResult(requestPath);
-            TryDelete(requestPath);
-            TryDelete(GetResultPath(requestPath));
-
-            return process.ExitCode == 0
-                ? new ToolActionResult(true, string.IsNullOrWhiteSpace(resultText) ? "操作已完成" : resultText)
-                : new ToolActionResult(false, string.IsNullOrWhiteSpace(resultText) ? "管理员操作失败" : resultText);
+            return new ToolActionResult(false, "需要管理员权限，但提权服务不可用");
         }
-        catch (System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == 1223)
-        {
-            return new ToolActionResult(false, "已取消管理员授权");
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or System.ComponentModel.Win32Exception)
-        {
-            return new ToolActionResult(false, "管理员操作失败：" + ex.Message);
-        }
+
+        var result = _elevation.RunElevatedAsync(
+            ElevatedOperationIds.FileLockAction,
+            new FileLockActionPayload(
+                action,
+                targetPath,
+                isDirectory,
+                processIds,
+                handles),
+            "diagnostics:filelock",
+            "文件锁定操作 " + targetPath).GetAwaiter().GetResult();
+        return result.ToToolActionResult();
     }
 
     private static IReadOnlyList<SystemHandleEntry> QuerySystemHandles()

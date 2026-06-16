@@ -19,6 +19,7 @@ using EdgeKit.Services.Agent;
 using EdgeKit.Services.Settings;
 using EdgeKit.Services.Diagnostics;
 using EdgeKit.Services.Images;
+using EdgeKit.Services.SystemOperations;
 using EdgeKit.Services.Text;
 using EdgeKit.Services.Tools;
 using Microsoft.Extensions.DependencyInjection;
@@ -180,6 +181,16 @@ public partial class App : Application
             sp.GetRequiredService<EdgeKit.Core.Clipboard.IClipboardClassifier>(),
             clipboardImageDir));
         services.AddSingleton<ClipboardContentWriter>();
+        services.AddSingleton<IElevatedOperationHandler, FileWriteElevatedOperationHandler>();
+        services.AddSingleton<IElevatedOperationHandler, FilePatchElevatedOperationHandler>();
+        services.AddSingleton<IElevatedOperationHandler, FileDeleteRecycleElevatedOperationHandler>();
+        services.AddSingleton<IElevatedOperationHandler, HostsSaveElevatedOperationHandler>();
+        services.AddSingleton<IElevatedOperationHandler, EnvironmentVariableSaveElevatedOperationHandler>();
+        services.AddSingleton<IElevatedOperationHandler, EnvironmentVariableRestoreElevatedOperationHandler>();
+        services.AddSingleton<IElevatedOperationHandler, FileLockElevatedOperationHandler>();
+        services.AddSingleton<IElevatedOperationHandler, ProcessKillElevatedOperationHandler>();
+        services.AddSingleton<IElevatedOperationHandler, PowerShellElevatedOperationHandler>();
+        services.AddSingleton<ElevatedOperationService>();
         services.AddSingleton<QuickLaunchActionService>();
         services.AddSingleton<SystemDiagnosticsService>();
         services.AddSingleton<HostsFileService>();
@@ -218,6 +229,12 @@ public partial class App : Application
     private static int? TryRunInternalCommand()
     {
         var args = Environment.GetCommandLineArgs();
+        if (args.Length >= 3
+            && string.Equals(args[1], ElevatedOperationService.ElevatedOperationArgument, StringComparison.OrdinalIgnoreCase))
+        {
+            return Services.GetRequiredService<ElevatedOperationService>().ExecuteInternalCommand(args[2]);
+        }
+
         if (args.Length >= 3
             && string.Equals(args[1], HostsFileService.ElevatedSaveArgument, StringComparison.OrdinalIgnoreCase))
         {

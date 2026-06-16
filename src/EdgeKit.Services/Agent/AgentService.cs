@@ -245,7 +245,7 @@ public sealed class AgentService : IAgentService
         try
         {
             var agent = await BuildAgentAsync(settings, AgentConversationMode.Chat, cancellationToken).ConfigureAwait(false);
-            var session = await CreateSessionAsync(agent, detail.Conversation, detail.Messages, cancellationToken).ConfigureAwait(false);
+            var session = await CreateSessionAsync(agent, detail.Messages, cancellationToken).ConfigureAwait(false);
             var response = await agent.RunAsync(
                 message.Trim(),
                 session,
@@ -372,7 +372,7 @@ public sealed class AgentService : IAgentService
             _toolCallsByTurnSignature.Clear();
 
             var agent = await BuildAgentAsync(settings, AgentConversationMode.Chat, cancellationToken).ConfigureAwait(false);
-            var session = await CreateSessionAsync(agent, detail.Conversation, detail.Messages, cancellationToken).ConfigureAwait(false);
+            var session = await CreateSessionAsync(agent, detail.Messages, cancellationToken).ConfigureAwait(false);
             await foreach (var update in agent.RunStreamingAsync(
                     trimmedMessage,
                     session,
@@ -693,7 +693,7 @@ public sealed class AgentService : IAgentService
             _toolCallsByTurnSignature.Clear();
 
             var agent = await BuildAgentAsync(settings, AgentConversationMode.Chat, cancellationToken).ConfigureAwait(false);
-            var session = await CreateSessionAsync(agent, detail.Conversation, detail.Messages, cancellationToken).ConfigureAwait(false);
+            var session = await CreateSessionAsync(agent, detail.Messages, cancellationToken, assistantMessage.Id).ConfigureAwait(false);
             var prompt =
                 $"工具 {call.ToolName} 已执行完成。请基于以下结果继续完成用户上一条任务；" +
                 "如果还需要调用工具可以继续调用。完成后用中文简洁说明结果，不要要求用户手动执行你能通过工具完成的步骤。\n" +
@@ -1110,49 +1110,105 @@ public sealed class AgentService : IAgentService
 
     private async Task<AgentSession> CreateSessionAsync(
         ChatClientAgent agent,
-        AgentConversation conversation,
         IReadOnlyList<AgentMessage> messages,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        long includeUserBeforeAssistantId = 0)
     {
-        if (!string.IsNullOrWhiteSpace(conversation.AgentSessionJson))
-        {
-            try
-            {
-                using var document = JsonDocument.Parse(conversation.AgentSessionJson);
-                return await agent.DeserializeSessionAsync(document.RootElement, JsonOptions, cancellationToken).ConfigureAwait(false);
-            }
-            catch
-            {
-                // Fall back to a fresh session populated below.
-            }
-        }
-
         var session = await agent.CreateSessionAsync(cancellationToken).ConfigureAwait(false);
-        var history = messages
-            .Where(m => m.Status == AgentMessageStatus.Complete)
+        var history = BuildCleanChatHistory(messages, includeUserBeforeAssistantId)
             .TakeLast(30)
-            .Select(m => new Microsoft.Extensions.AI.ChatMessage(ToChatRole(m.Role), m.Content))
+            .Select(m => new Microsoft.Extensions.AI.ChatMessage(ToChatRole(m.Role), m.Content.Trim()))
             .ToList();
         session.SetInMemoryChatHistory(history, null, JsonOptions);
         return session;
     }
 
-    private async Task SaveSessionAsync(
+    private Task SaveSessionAsync(
         ChatClientAgent agent,
         AgentSession session,
         long conversationId,
         CancellationToken cancellationToken)
     {
+        _ = agent;
+        _ = session;
+        _ = cancellationToken;
         try
         {
-            var json = await agent.SerializeSessionAsync(session, JsonOptions, cancellationToken).ConfigureAwait(false);
-            _repository.SaveSession(conversationId, json.GetRawText());
+            _repository.SaveSession(conversationId, string.Empty);
         }
         catch
         {
-            // Session persistence is best effort; messages are still stored.
+            // Session cleanup is best effort; messages are still stored.
         }
+
+        return Task.CompletedTask;
     }
+
+    private static IReadOnlyList<AgentMessage> BuildCleanChatHistory(
+        IReadOnlyList<AgentMessage> messages,
+        long includeUserBeforeAssistantId)
+    {
+        var ordered = messages
+            .OrderBy(m => m.Sequence)
+            .ThenBy(m => m.Id)
+            .ToArray();
+        var result = new List<AgentMessage>();
+        AgentMessage? pendingUser = null;
+
+        foreach (var message in ordered)
+        {
+            if (message.Role == AgentMessageRole.User)
+            {
+                pendingUser = IsCleanUserHistoryMessage(message) ? message : null;
+                continue;
+            }
+
+            if (message.Role != AgentMessageRole.Assistant)
+            {
+                continue;
+            }
+
+            if (pendingUser is not null && IsCleanAssistantHistoryMessage(message))
+            {
+                result.Add(pendingUser);
+                result.Add(message);
+            }
+
+            pendingUser = null;
+        }
+
+        if (includeUserBeforeAssistantId > 0)
+        {
+            var assistant = ordered.FirstOrDefault(m => m.Id == includeUserBeforeAssistantId && m.Role == AgentMessageRole.Assistant);
+            var sourceUser = assistant is null
+                ? null
+                : ordered
+                    .Where(m => m.Role == AgentMessageRole.User
+                        && m.Sequence < assistant.Sequence
+                        && IsCleanUserHistoryMessage(m))
+                    .OrderByDescending(m => m.Sequence)
+                    .ThenByDescending(m => m.Id)
+                    .FirstOrDefault();
+            if (sourceUser is not null && result.All(m => m.Id != sourceUser.Id))
+            {
+                result.Add(sourceUser);
+            }
+        }
+
+        return result;
+    }
+
+    private static bool IsCleanUserHistoryMessage(AgentMessage message)
+        => message.Status == AgentMessageStatus.Complete
+            && !string.IsNullOrWhiteSpace(message.Content);
+
+    private static bool IsCleanAssistantHistoryMessage(AgentMessage message)
+        => message.Status == AgentMessageStatus.Complete
+            && string.IsNullOrWhiteSpace(message.ActivityText)
+            && string.IsNullOrWhiteSpace(message.Error)
+            && !string.IsNullOrWhiteSpace(message.Content)
+            && !string.Equals(message.Content.Trim(), WaitingForToolApprovalText, StringComparison.Ordinal)
+            && !string.Equals(message.Content.Trim(), "正在思考...", StringComparison.Ordinal);
 
     private static ChatRole ToChatRole(AgentMessageRole role)
         => role switch
