@@ -35,6 +35,7 @@ public sealed class AgentService : IAgentService
     private long _activeAssistantMessageId;
     private int _toolCallsThisTurn;
     private AgentToolCall? _pendingApprovalCall;
+    private AgentStreamContext? _activeStreamContext;
     private readonly Dictionary<string, long> _toolCallsByTurnSignature = new(StringComparer.Ordinal);
 
     public AgentService(
@@ -238,6 +239,7 @@ public sealed class AgentService : IAgentService
         _activeConversationId = conversationId;
         var assistantMessage = _repository.AddMessage(conversationId, AgentMessageRole.Assistant, string.Empty, AgentMessageStatus.Pending);
         _activeAssistantMessageId = assistantMessage.Id;
+        _activeStreamContext = null;
         _toolCallsThisTurn = 0;
         _pendingApprovalCall = null;
         _toolCallsByTurnSignature.Clear();
@@ -293,6 +295,7 @@ public sealed class AgentService : IAgentService
         {
             _activeConversationId = 0;
             _activeAssistantMessageId = 0;
+            _activeStreamContext = null;
             _toolCallsThisTurn = 0;
             _pendingApprovalCall = null;
             _toolCallsByTurnSignature.Clear();
@@ -367,6 +370,7 @@ public sealed class AgentService : IAgentService
             lockHeld = true;
             _activeConversationId = conversationId;
             _activeAssistantMessageId = assistantMessage.Id;
+            _activeStreamContext = new AgentStreamContext(writer, userMessage, assistantMessage, CancellationToken.None);
             _toolCallsThisTurn = 0;
             _pendingApprovalCall = null;
             _toolCallsByTurnSignature.Clear();
@@ -401,7 +405,7 @@ public sealed class AgentService : IAgentService
             {
                 assistantMessage = MarkAssistantWaitingForToolApproval(assistantMessage, responseText.ToString());
                 await writer.WriteAsync(
-                    new AgentStreamEvent(AgentStreamEventKind.Completed, userMessage, assistantMessage, string.Empty, GetToolCalls(conversationId), string.Empty),
+                    new AgentStreamEvent(AgentStreamEventKind.PausedForToolApproval, userMessage, assistantMessage, string.Empty, GetToolCalls(conversationId), string.Empty),
                     CancellationToken.None).ConfigureAwait(false);
                 return;
             }
@@ -431,7 +435,7 @@ public sealed class AgentService : IAgentService
             }
 
             await writer.WriteAsync(
-                new AgentStreamEvent(AgentStreamEventKind.Completed, userMessage, assistantMessage, string.Empty, GetToolCalls(conversationId), string.Empty),
+                new AgentStreamEvent(AgentStreamEventKind.PausedForToolApproval, userMessage, assistantMessage, string.Empty, GetToolCalls(conversationId), string.Empty),
                 CancellationToken.None).ConfigureAwait(false);
         }
         catch (Exception ex) when (IsAgentCallException(ex) || ex is OperationCanceledException)
@@ -470,6 +474,7 @@ public sealed class AgentService : IAgentService
         {
             _activeConversationId = 0;
             _activeAssistantMessageId = 0;
+            _activeStreamContext = null;
             _toolCallsThisTurn = 0;
             _pendingApprovalCall = null;
             _toolCallsByTurnSignature.Clear();
@@ -986,15 +991,16 @@ public sealed class AgentService : IAgentService
             approval,
             execution);
         _toolCallsByTurnSignature[signature] = call.Id;
-
         if (approval == AgentToolApprovalStatus.Pending)
         {
             _pendingApprovalCall = call;
+            await PublishToolCallsChangedAsync(GetWaitingAssistantMessage(), cancellationToken).ConfigureAwait(false);
             throw new AgentToolApprovalRequiredException(call);
         }
 
+        await PublishToolCallsChangedAsync(GetRunningAssistantMessage(descriptor), cancellationToken).ConfigureAwait(false);
         var result = await _toolExecutor.ExecuteAsync(toolId, arguments, cancellationToken).ConfigureAwait(false);
-        _repository.UpdateToolCall(
+        var updated = _repository.UpdateToolCall(
             call.Id,
             AgentToolApprovalStatus.NotRequired,
             result.Success ? AgentToolExecutionStatus.Succeeded : AgentToolExecutionStatus.Failed,
@@ -1006,7 +1012,70 @@ public sealed class AgentService : IAgentService
             result.Success ? result.Result : "工具执行失败: " + result.Error,
             result.Success ? AgentMessageStatus.Complete : AgentMessageStatus.Failed,
             result.Error);
+        await PublishToolCallsChangedAsync(GetRunningAssistantMessage(descriptor, updated), cancellationToken).ConfigureAwait(false);
         return result.Success ? result.Result : "工具执行失败: " + result.Error;
+    }
+
+    private AgentMessage? GetWaitingAssistantMessage()
+    {
+        var context = _activeStreamContext;
+        if (context?.AssistantMessage is null)
+        {
+            return null;
+        }
+
+        var assistant = context.AssistantMessage with
+        {
+            Status = AgentMessageStatus.Pending,
+            ActivityText = WaitingForToolApprovalText,
+            Error = string.Empty
+        };
+        _activeStreamContext = context with { AssistantMessage = assistant };
+        return assistant;
+    }
+
+    private AgentMessage? GetRunningAssistantMessage(AgentToolDescriptor descriptor, AgentToolCall? call = null)
+    {
+        var context = _activeStreamContext;
+        if (context?.AssistantMessage is null)
+        {
+            return null;
+        }
+
+        var activity = call?.ExecutionStatus switch
+        {
+            AgentToolExecutionStatus.Succeeded => $"工具 {descriptor.Name} 已执行完成，正在继续处理...",
+            AgentToolExecutionStatus.Failed => $"工具 {descriptor.Name} 执行失败，正在继续处理...",
+            _ => $"正在执行工具：{descriptor.Name}..."
+        };
+        _repository.UpdateMessageActivity(context.AssistantMessage.Id, AgentMessageStatus.Pending, activity);
+        var assistant = context.AssistantMessage with
+        {
+            Status = AgentMessageStatus.Pending,
+            ActivityText = activity,
+            Error = string.Empty
+        };
+        _activeStreamContext = context with { AssistantMessage = assistant };
+        return assistant;
+    }
+
+    private async Task PublishToolCallsChangedAsync(AgentMessage? assistantMessage, CancellationToken cancellationToken)
+    {
+        var context = _activeStreamContext;
+        if (context is null || _activeConversationId <= 0)
+        {
+            return;
+        }
+
+        await context.Writer.WriteAsync(
+            new AgentStreamEvent(
+                AgentStreamEventKind.ToolCallsChanged,
+                context.UserMessage,
+                assistantMessage ?? context.AssistantMessage,
+                string.Empty,
+                GetToolCalls(_activeConversationId),
+                string.Empty),
+            cancellationToken).ConfigureAwait(false);
     }
 
     private static string BuildToolCallSignature(long assistantMessageId, string toolId, string argumentsJson)
@@ -1402,4 +1471,10 @@ public sealed class AgentService : IAgentService
 
         public AgentToolCall ToolCall { get; }
     }
+
+    private sealed record AgentStreamContext(
+        ChannelWriter<AgentStreamEvent> Writer,
+        AgentMessage? UserMessage,
+        AgentMessage? AssistantMessage,
+        CancellationToken CancellationToken);
 }

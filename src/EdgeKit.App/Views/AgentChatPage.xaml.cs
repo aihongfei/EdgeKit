@@ -28,6 +28,7 @@ public sealed partial class AgentChatPage : Page
     private bool _conversationDeleteDialogOpen;
     private bool _streamFlushScheduled;
     private AgentTimelineItemViewModel? _streamingAssistantItem;
+    private AgentTimelineItemViewModel? _preferredScrollItem;
     private CancellationTokenSource? _statusAutoCloseCts;
 
     public AgentChatPage()
@@ -124,7 +125,7 @@ public sealed partial class AgentChatPage : Page
         }
 
         RebuildTimeline(detail);
-        ScrollMessagesToEnd(force: true);
+        ScrollToPreferredItemOrEnd(force: true);
     }
 
     private void RefreshConversationDetail()
@@ -146,7 +147,7 @@ public sealed partial class AgentChatPage : Page
         }
 
         UpsertToolCalls(detail.ToolCalls);
-        ScrollMessagesToEnd();
+        ScrollToPreferredItemOrEnd();
     }
 
     private void RebuildTimeline(AgentConversationDetail detail)
@@ -176,7 +177,9 @@ public sealed partial class AgentChatPage : Page
 
             foreach (var tool in relatedTools)
             {
-                _timeline.Add(new AgentTimelineItemViewModel(tool));
+                var item = new AgentTimelineItemViewModel(tool);
+                _timeline.Add(item);
+                RememberPreferredScrollTool(item);
             }
 
             _timeline.Add(new AgentTimelineItemViewModel(message));
@@ -279,7 +282,7 @@ public sealed partial class AgentChatPage : Page
 
     private async void OnPromptKeyDown(object sender, KeyRoutedEventArgs e)
     {
-        if (e.Key != VirtualKey.Enter)
+        if (e.Key is not (VirtualKey.Enter or VirtualKey.Accept))
         {
             return;
         }
@@ -287,7 +290,7 @@ public sealed partial class AgentChatPage : Page
         if (IsShiftDown() || IsAltDown())
         {
             e.Handled = true;
-            InsertPromptNewLine();
+            DispatcherQueue.TryEnqueue(InsertPromptNewLine);
             return;
         }
 
@@ -388,7 +391,7 @@ public sealed partial class AgentChatPage : Page
             ApplyStreamEvent(_pendingStreamEvents.Dequeue(), scroll: false);
         }
 
-        ScrollMessagesToEnd(force: true);
+        ScrollToPreferredItemOrEnd(force: true);
     }
 
     private void ApplyStreamEvent(AgentStreamEvent item, bool scroll = true)
@@ -400,8 +403,12 @@ public sealed partial class AgentChatPage : Page
 
         if (item.AssistantMessage is not null)
         {
-            if (item.Kind is AgentStreamEventKind.Completed or AgentStreamEventKind.Failed
-                || _streamingAssistantItem is null)
+            if (item.Kind == AgentStreamEventKind.ToolCallsChanged && _streamingAssistantItem is not null)
+            {
+                _streamingAssistantItem.UpdateMessageState(item.AssistantMessage);
+            }
+            else if (item.Kind is AgentStreamEventKind.Completed or AgentStreamEventKind.Failed or AgentStreamEventKind.PausedForToolApproval
+                     || _streamingAssistantItem is null)
             {
                 _streamingAssistantItem = UpsertMessage(item.AssistantMessage);
             }
@@ -428,6 +435,12 @@ public sealed partial class AgentChatPage : Page
             _streamingAssistantItem = null;
         }
 
+        if (item.Kind == AgentStreamEventKind.PausedForToolApproval && item.AssistantMessage is not null)
+        {
+            _streamingAssistantItem?.UpdateMessage(item.AssistantMessage);
+            _streamingAssistantItem = null;
+        }
+
         if (item.Kind == AgentStreamEventKind.Failed)
         {
             if (!string.IsNullOrWhiteSpace(item.ErrorMessage))
@@ -445,7 +458,7 @@ public sealed partial class AgentChatPage : Page
 
         if (scroll)
         {
-            ScrollMessagesToEnd(force: true);
+            ScrollToPreferredItemOrEnd(force: true);
         }
     }
 
@@ -490,10 +503,12 @@ public sealed partial class AgentChatPage : Page
             if (existing is not null)
             {
                 existing.UpdateToolCall(call);
+                RememberPreferredScrollTool(existing);
                 continue;
             }
 
             var item = new AgentTimelineItemViewModel(call);
+            RememberPreferredScrollTool(item);
             var relatedMessage = call.MessageId is long messageId
                 ? _timeline.FirstOrDefault(i => i.MessageId == messageId)
                 : null;
@@ -512,6 +527,26 @@ public sealed partial class AgentChatPage : Page
             {
                 _timeline.Add(item);
             }
+        }
+    }
+
+    private void RememberPreferredScrollTool(AgentTimelineItemViewModel item)
+    {
+        if (item.ToolCall is null)
+        {
+            return;
+        }
+
+        if (item.ToolCall.ApprovalStatus == AgentToolApprovalStatus.Pending
+            || item.ToolCall.ExecutionStatus is AgentToolExecutionStatus.Pending or AgentToolExecutionStatus.Running or AgentToolExecutionStatus.Failed)
+        {
+            _preferredScrollItem = item;
+            return;
+        }
+
+        if (ReferenceEquals(_preferredScrollItem, item))
+        {
+            _preferredScrollItem = null;
         }
     }
 
@@ -919,10 +954,17 @@ public sealed partial class AgentChatPage : Page
     }
 
     private static bool IsAltDown()
-        => (NativeMethods.GetKeyState((int)VirtualKey.Menu) & unchecked((short)0x8000)) != 0;
+        => IsKeyDown(VirtualKey.Menu)
+            || IsKeyDown(VirtualKey.LeftMenu)
+            || IsKeyDown(VirtualKey.RightMenu);
 
     private static bool IsShiftDown()
-        => (NativeMethods.GetKeyState((int)VirtualKey.Shift) & unchecked((short)0x8000)) != 0;
+        => IsKeyDown(VirtualKey.Shift)
+            || IsKeyDown(VirtualKey.LeftShift)
+            || IsKeyDown(VirtualKey.RightShift);
+
+    private static bool IsKeyDown(VirtualKey key)
+        => (NativeMethods.GetAsyncKeyState((int)key) & unchecked((short)0x8000)) != 0;
 
     private void ScrollMessagesToEnd(bool force = false)
     {
@@ -930,6 +972,44 @@ public sealed partial class AgentChatPage : Page
         DispatcherQueue.TryEnqueue(
             Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
             () => ScrollMessagesToEndCore(force: true));
+    }
+
+    private void ScrollToPreferredItemOrEnd(bool force = false)
+    {
+        var target = _preferredScrollItem;
+        if (target is not null && _timeline.Contains(target))
+        {
+            ScrollTimelineItemIntoView(target, force);
+            return;
+        }
+
+        _preferredScrollItem = null;
+        ScrollMessagesToEnd(force);
+    }
+
+    private void ScrollTimelineItemIntoView(AgentTimelineItemViewModel item, bool force)
+    {
+        ScrollTimelineItemIntoViewCore(item, force);
+        DispatcherQueue.TryEnqueue(
+            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+            () => ScrollTimelineItemIntoViewCore(item, force: true));
+    }
+
+    private void ScrollTimelineItemIntoViewCore(AgentTimelineItemViewModel item, bool force)
+    {
+        var sv = FindScrollViewer(MessageList);
+        if (sv is null)
+        {
+            return;
+        }
+
+        if (!force && sv.ScrollableHeight - sv.VerticalOffset > 80)
+        {
+            return;
+        }
+
+        MessageList.ScrollIntoView(item);
+        MessageList.UpdateLayout();
     }
 
     private void ScrollMessagesToEndCore(bool force)

@@ -222,6 +222,12 @@ public sealed class AgentTimelineItemViewModel : INotifyPropertyChanged
         RaiseAll();
     }
 
+    public void UpdateMessageState(AgentMessage message)
+    {
+        _message = message;
+        RaiseAll();
+    }
+
     public void UpdateToolCall(AgentToolCall toolCall)
     {
         var previous = _toolCall;

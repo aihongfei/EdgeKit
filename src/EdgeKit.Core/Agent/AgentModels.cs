@@ -137,6 +137,7 @@ public enum AgentStreamEventKind
     Started,
     Delta,
     ToolCallsChanged,
+    PausedForToolApproval,
     Completed,
     Failed
 }

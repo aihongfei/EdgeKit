@@ -177,6 +177,9 @@ public static class NativeMethods
     [DllImport("user32.dll")]
     public static extern short GetKeyState(int nVirtKey);
 
+    [DllImport("user32.dll")]
+    public static extern short GetAsyncKeyState(int vKey);
+
     public const int WH_KEYBOARD_LL = 13;
     public const uint WM_KEYDOWN = 0x0100;
     public const uint WM_KEYUP = 0x0101;

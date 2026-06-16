@@ -16,6 +16,14 @@ namespace EdgeKit.Services.Agent;
 
 public sealed class AgentToolExecutor
 {
+    private const int MaxFileSearchBytes = 512 * 1024;
+    private const int MinSearchScannedFiles = 2_000;
+    private const int MaxSearchScannedFiles = 10_000;
+    private const int MaxSearchDirectories = 1_500;
+    private const int MaxListScannedEntries = 5_000;
+    private static readonly TimeSpan MaxSearchDuration = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan MaxListDuration = TimeSpan.FromSeconds(5);
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = false
@@ -246,19 +254,48 @@ public sealed class AgentToolExecutor
 
         var recursive = GetOptionalBool(arguments, "recursive") ?? false;
         var limit = Math.Clamp(GetOptionalInt(arguments, "limit") ?? 100, 1, 500);
-        var option = recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
-        var entries = Directory.EnumerateFileSystemEntries(path, pattern, option)
-            .Take(limit)
-            .Select(p =>
-            {
-                var kind = Directory.Exists(p) ? "dir" : "file";
-                return $"{kind} {p}";
-            })
-            .ToArray();
+        var entries = new List<string>();
+        var stats = new FileListStats(MaxListScannedEntries, MaxSearchDirectories, DateTime.UtcNow + MaxListDuration);
 
-        return entries.Length == 0
+        foreach (var entry in EnumerateEntriesSafely(path, pattern, recursive, stats))
+        {
+            if (entries.Count >= limit || stats.IsBudgetExhausted)
+            {
+                break;
+            }
+
+            try
+            {
+                var kind = Directory.Exists(entry) ? "dir" : "file";
+                entries.Add($"{kind} {entry}");
+            }
+            catch (Exception ex) when (IsSkippableFileSystemException(ex))
+            {
+                stats.SkippedInaccessible++;
+            }
+        }
+
+        var suffixLines = new List<string>();
+        if (stats.SkippedInaccessible > 0)
+        {
+            suffixLines.Add($"已跳过不可访问项目: {stats.SkippedInaccessible}");
+        }
+
+        if (stats.SkippedReparsePoints > 0)
+        {
+            suffixLines.Add($"已跳过系统链接目录: {stats.SkippedReparsePoints}");
+        }
+
+        if (stats.IsBudgetExhausted)
+        {
+            suffixLines.Add($"已达到列表扫描预算，结果可能不完整。已扫描项目: {stats.EntriesScanned}");
+        }
+
+        var suffix = suffixLines.Count > 0 ? Environment.NewLine + string.Join(Environment.NewLine, suffixLines) : string.Empty;
+        var text = entries.Count == 0
             ? "未找到文件或文件夹。"
             : string.Join(Environment.NewLine, entries);
+        return text + suffix;
     }
 
     private async Task<string> SearchFilesAsync(JsonElement arguments, CancellationToken cancellationToken)
@@ -273,10 +310,13 @@ public sealed class AgentToolExecutor
 
         var recursive = GetOptionalBool(arguments, "recursive") ?? true;
         var limit = Math.Clamp(GetOptionalInt(arguments, "limit") ?? 50, 1, 200);
-        var option = recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
         var results = new List<string>();
+        var stats = new FileSearchStats(
+            Math.Clamp(limit * 500, MinSearchScannedFiles, MaxSearchScannedFiles),
+            MaxSearchDirectories,
+            DateTime.UtcNow + MaxSearchDuration);
 
-        foreach (var file in Directory.EnumerateFiles(path, pattern, option))
+        foreach (var file in EnumerateFilesSafely(path, pattern, recursive, stats, cancellationToken))
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (results.Count >= limit)
@@ -291,9 +331,25 @@ public sealed class AgentToolExecutor
                 continue;
             }
 
-            var info = new FileInfo(file);
-            if (info.Length > 512 * 1024)
+            FileInfo info;
+            try
             {
+                info = new FileInfo(file);
+                if ((info.Attributes & FileAttributes.ReparsePoint) != 0)
+                {
+                    stats.SkippedReparsePoints++;
+                    continue;
+                }
+            }
+            catch (Exception ex) when (IsSkippableFileSystemException(ex))
+            {
+                stats.SkippedInaccessible++;
+                continue;
+            }
+
+            if (info.Length > MaxFileSearchBytes)
+            {
+                stats.SkippedLarge++;
                 continue;
             }
 
@@ -311,13 +367,279 @@ public sealed class AgentToolExecutor
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or DecoderFallbackException)
             {
-                // Skip unreadable or binary-looking files during search.
+                stats.SkippedUnreadable++;
             }
         }
 
+        var summary = BuildSearchStatsSummary(stats);
         return results.Count == 0
-            ? "未找到匹配内容。"
-            : string.Join(Environment.NewLine, results);
+            ? "未找到匹配内容。" + summary
+            : string.Join(Environment.NewLine, results) + summary;
+    }
+
+    private static IEnumerable<string> EnumerateFilesSafely(
+        string root,
+        string pattern,
+        bool recursive,
+        FileSearchStats stats,
+        CancellationToken cancellationToken)
+    {
+        var directories = new Stack<string>();
+        directories.Push(root);
+
+        while (directories.Count > 0)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (stats.IsBudgetExhausted)
+            {
+                yield break;
+            }
+
+            var directory = directories.Pop();
+            stats.DirectoriesVisited++;
+
+            foreach (var file in EnumerateDirectoryFilesSafely(directory, pattern, stats))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (stats.IsBudgetExhausted)
+                {
+                    yield break;
+                }
+
+                stats.FilesScanned++;
+                yield return file;
+            }
+
+            if (!recursive)
+            {
+                continue;
+            }
+
+            foreach (var child in EnumerateChildDirectoriesSafely(directory, stats))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (stats.IsBudgetExhausted)
+                {
+                    yield break;
+                }
+
+                try
+                {
+                    var attributes = File.GetAttributes(child);
+                    if ((attributes & FileAttributes.ReparsePoint) != 0)
+                    {
+                        stats.SkippedReparsePoints++;
+                        continue;
+                    }
+                }
+                catch (Exception ex) when (IsSkippableFileSystemException(ex))
+                {
+                    stats.SkippedInaccessible++;
+                    continue;
+                }
+
+                directories.Push(child);
+            }
+        }
+    }
+
+    private static IEnumerable<string> EnumerateEntriesSafely(
+        string root,
+        string pattern,
+        bool recursive,
+        FileListStats stats)
+    {
+        var directories = new Stack<string>();
+        directories.Push(root);
+
+        while (directories.Count > 0)
+        {
+            if (stats.IsBudgetExhausted)
+            {
+                yield break;
+            }
+
+            var directory = directories.Pop();
+            stats.DirectoriesVisited++;
+
+            foreach (var entry in EnumerateDirectoryEntriesSafely(directory, pattern, stats))
+            {
+                if (stats.IsBudgetExhausted)
+                {
+                    yield break;
+                }
+
+                stats.EntriesScanned++;
+                yield return entry;
+            }
+
+            if (!recursive)
+            {
+                continue;
+            }
+
+            foreach (var child in EnumerateChildDirectoriesSafely(directory, stats))
+            {
+                if (stats.IsBudgetExhausted)
+                {
+                    yield break;
+                }
+
+                try
+                {
+                    var attributes = File.GetAttributes(child);
+                    if ((attributes & FileAttributes.ReparsePoint) != 0)
+                    {
+                        stats.SkippedReparsePoints++;
+                        continue;
+                    }
+                }
+                catch (Exception ex) when (IsSkippableFileSystemException(ex))
+                {
+                    stats.SkippedInaccessible++;
+                    continue;
+                }
+
+                directories.Push(child);
+            }
+        }
+    }
+
+    private static IEnumerable<string> EnumerateDirectoryEntriesSafely(string directory, string pattern, FileListStats stats)
+    {
+        IEnumerator<string>? enumerator = null;
+        try
+        {
+            enumerator = Directory.EnumerateFileSystemEntries(directory, pattern, CreateEnumerationOptions(recursive: false)).GetEnumerator();
+            while (true)
+            {
+                string current;
+                try
+                {
+                    if (!enumerator.MoveNext())
+                    {
+                        yield break;
+                    }
+
+                    current = enumerator.Current;
+                }
+                catch (Exception ex) when (IsSkippableFileSystemException(ex))
+                {
+                    stats.SkippedInaccessible++;
+                    yield break;
+                }
+
+                yield return current;
+            }
+        }
+        finally
+        {
+            enumerator?.Dispose();
+        }
+    }
+
+    private static IEnumerable<string> EnumerateDirectoryFilesSafely(string directory, string pattern, FileSearchStats stats)
+    {
+        IEnumerator<string>? enumerator = null;
+        try
+        {
+            enumerator = Directory.EnumerateFiles(directory, pattern, CreateEnumerationOptions(recursive: false)).GetEnumerator();
+            while (true)
+            {
+                string current;
+                try
+                {
+                    if (!enumerator.MoveNext())
+                    {
+                        yield break;
+                    }
+
+                    current = enumerator.Current;
+                }
+                catch (Exception ex) when (IsSkippableFileSystemException(ex))
+                {
+                    stats.SkippedInaccessible++;
+                    yield break;
+                }
+
+                yield return current;
+            }
+        }
+        finally
+        {
+            enumerator?.Dispose();
+        }
+    }
+
+    private static IEnumerable<string> EnumerateChildDirectoriesSafely(string directory, IFileEnumerationStats stats)
+    {
+        IEnumerator<string>? enumerator = null;
+        try
+        {
+            enumerator = Directory.EnumerateDirectories(directory, "*", CreateEnumerationOptions(recursive: false)).GetEnumerator();
+            while (true)
+            {
+                string current;
+                try
+                {
+                    if (!enumerator.MoveNext())
+                    {
+                        yield break;
+                    }
+
+                    current = enumerator.Current;
+                }
+                catch (Exception ex) when (IsSkippableFileSystemException(ex))
+                {
+                    stats.SkippedInaccessible++;
+                    yield break;
+                }
+
+                yield return current;
+            }
+        }
+        finally
+        {
+            enumerator?.Dispose();
+        }
+    }
+
+    private static EnumerationOptions CreateEnumerationOptions(bool recursive)
+        => new()
+        {
+            RecurseSubdirectories = recursive,
+            IgnoreInaccessible = true,
+            ReturnSpecialDirectories = false,
+            AttributesToSkip = FileAttributes.ReparsePoint
+        };
+
+    private static bool IsSkippableFileSystemException(Exception ex)
+        => ex is IOException
+            or UnauthorizedAccessException
+            or DirectoryNotFoundException
+            or PathTooLongException
+            or NotSupportedException;
+
+    private static string BuildSearchStatsSummary(FileSearchStats stats)
+    {
+        var skipped = stats.SkippedInaccessible + stats.SkippedUnreadable + stats.SkippedLarge + stats.SkippedReparsePoints;
+        var lines = new List<string>
+        {
+            string.Empty,
+            $"扫描文件: {stats.FilesScanned}, 扫描目录: {stats.DirectoriesVisited}"
+        };
+
+        if (skipped > 0)
+        {
+            lines.Add($"已跳过: {skipped} (不可访问 {stats.SkippedInaccessible}, 不可读 {stats.SkippedUnreadable}, 过大 {stats.SkippedLarge}, 系统链接 {stats.SkippedReparsePoints})");
+        }
+
+        if (stats.IsBudgetExhausted)
+        {
+            lines.Add("已达到搜索预算，结果可能不完整。");
+        }
+
+        return string.Join(Environment.NewLine, lines);
     }
 
     private async Task<string> WriteFileAsync(JsonElement arguments, CancellationToken cancellationToken)
@@ -971,6 +1293,51 @@ public sealed class AgentToolExecutor
         => value.Length <= 4000 ? value : value[..4000] + Environment.NewLine + "...";
 
     private sealed record WebSearchItem(string Title, string Url, string Snippet);
+
+    private interface IFileEnumerationStats
+    {
+        int SkippedInaccessible { get; set; }
+
+        int SkippedReparsePoints { get; set; }
+
+        bool IsBudgetExhausted { get; }
+    }
+
+    private sealed class FileListStats(int maxEntries, int maxDirectories, DateTime deadlineUtc) : IFileEnumerationStats
+    {
+        public int EntriesScanned { get; set; }
+
+        public int DirectoriesVisited { get; set; }
+
+        public int SkippedInaccessible { get; set; }
+
+        public int SkippedReparsePoints { get; set; }
+
+        public bool IsBudgetExhausted
+            => EntriesScanned >= maxEntries
+                || DirectoriesVisited >= maxDirectories
+                || DateTime.UtcNow >= deadlineUtc;
+    }
+
+    private sealed class FileSearchStats(int maxFiles, int maxDirectories, DateTime deadlineUtc) : IFileEnumerationStats
+    {
+        public int FilesScanned { get; set; }
+
+        public int DirectoriesVisited { get; set; }
+
+        public int SkippedInaccessible { get; set; }
+
+        public int SkippedUnreadable { get; set; }
+
+        public int SkippedLarge { get; set; }
+
+        public int SkippedReparsePoints { get; set; }
+
+        public bool IsBudgetExhausted
+            => FilesScanned >= maxFiles
+                || DirectoriesVisited >= maxDirectories
+                || DateTime.UtcNow >= deadlineUtc;
+    }
 }
 
 public sealed record AgentToolExecutionResult(bool Success, string Result, string Error);
