@@ -18,6 +18,7 @@ public sealed class AgentService : IAgentService
 {
     private const int MaxToolCallsPerTurn = 8;
     private const string WaitingForToolApprovalText = "等待确认工具调用...";
+    private const string StoppedByUserActivityText = "已中止本次回复。";
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -248,8 +249,9 @@ public sealed class AgentService : IAgentService
         {
             var agent = await BuildAgentAsync(settings, AgentConversationMode.Chat, cancellationToken).ConfigureAwait(false);
             var session = await CreateSessionAsync(agent, detail.Messages, cancellationToken).ConfigureAwait(false);
+            var runMessage = BuildContinuationPromptIfNeeded(detail, message.Trim()) ?? message.Trim();
             var response = await agent.RunAsync(
-                message.Trim(),
+                runMessage,
                 session,
                 BuildRunOptions(settings, AgentConversationMode.Chat),
                 cancellationToken).ConfigureAwait(false);
@@ -377,8 +379,9 @@ public sealed class AgentService : IAgentService
 
             var agent = await BuildAgentAsync(settings, AgentConversationMode.Chat, cancellationToken).ConfigureAwait(false);
             var session = await CreateSessionAsync(agent, detail.Messages, cancellationToken).ConfigureAwait(false);
+            var runMessage = BuildContinuationPromptIfNeeded(detail, trimmedMessage) ?? trimmedMessage;
             await foreach (var update in agent.RunStreamingAsync(
-                    trimmedMessage,
+                    runMessage,
                     session,
                     BuildRunOptions(settings, AgentConversationMode.Chat),
                     cancellationToken).ConfigureAwait(false))
@@ -436,6 +439,18 @@ public sealed class AgentService : IAgentService
 
             await writer.WriteAsync(
                 new AgentStreamEvent(AgentStreamEventKind.PausedForToolApproval, userMessage, assistantMessage, string.Empty, GetToolCalls(conversationId), string.Empty),
+                CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            if (assistantMessage is not null)
+            {
+                assistantMessage = MarkAssistantStoppedAfterCancellation(assistantMessage, responseText.ToString());
+                SkipPendingToolsForAssistant(conversationId, assistantMessage.Id, "已中止本次回复");
+            }
+
+            await writer.WriteAsync(
+                new AgentStreamEvent(AgentStreamEventKind.Completed, userMessage, assistantMessage, string.Empty, GetToolCalls(conversationId), string.Empty),
                 CancellationToken.None).ConfigureAwait(false);
         }
         catch (Exception ex) when (IsAgentCallException(ex) || ex is OperationCanceledException)
@@ -588,6 +603,40 @@ public sealed class AgentService : IAgentService
             ActivityText = WaitingForToolApprovalText,
             Error = string.Empty
         };
+    }
+
+    private AgentMessage MarkAssistantStoppedAfterCancellation(AgentMessage assistant, string? latestContent = null)
+    {
+        var content = ResolveAssistantBody(assistant, latestContent);
+        _repository.UpdateMessage(assistant.Id, content, AgentMessageStatus.Complete, activityText: StoppedByUserActivityText);
+        return assistant with
+        {
+            Content = content,
+            Status = AgentMessageStatus.Complete,
+            ActivityText = StoppedByUserActivityText,
+            Error = string.Empty
+        };
+    }
+
+    private void SkipPendingToolsForAssistant(long conversationId, long assistantMessageId, string reason)
+    {
+        var detail = _repository.GetConversation(conversationId);
+        if (detail is null)
+        {
+            return;
+        }
+
+        foreach (var call in detail.ToolCalls.Where(t =>
+            t.MessageId == assistantMessageId
+            && t.ApprovalStatus == AgentToolApprovalStatus.Pending))
+        {
+            _repository.UpdateToolCall(
+                call.Id,
+                AgentToolApprovalStatus.Rejected,
+                AgentToolExecutionStatus.Skipped,
+                reason,
+                string.Empty);
+        }
     }
 
     private static string ResolveAssistantBody(AgentMessage assistant, string? latestContent)
@@ -1213,6 +1262,92 @@ public sealed class AgentService : IAgentService
         return Task.CompletedTask;
     }
 
+    private static string? BuildContinuationPromptIfNeeded(AgentConversationDetail detail, string userMessage)
+    {
+        if (!IsContinuationRequest(userMessage))
+        {
+            return null;
+        }
+
+        var stoppedAssistant = detail.Messages
+            .Where(m => m.Role == AgentMessageRole.Assistant
+                && m.Status == AgentMessageStatus.Complete
+                && IsStoppedByUserMessage(m)
+                && !string.IsNullOrWhiteSpace(m.Content))
+            .OrderByDescending(m => m.Sequence)
+            .ThenByDescending(m => m.Id)
+            .FirstOrDefault();
+        if (stoppedAssistant is null)
+        {
+            return null;
+        }
+
+        var sourceUser = detail.Messages
+            .Where(m => m.Role == AgentMessageRole.User
+                && m.Sequence < stoppedAssistant.Sequence
+                && IsCleanUserHistoryMessage(m))
+            .OrderByDescending(m => m.Sequence)
+            .ThenByDescending(m => m.Id)
+            .FirstOrDefault();
+
+        var toolResults = detail.ToolCalls
+            .Where(t => t.MessageId == stoppedAssistant.Id
+                && t.ExecutionStatus == AgentToolExecutionStatus.Succeeded
+                && !string.IsNullOrWhiteSpace(t.ResultSummary))
+            .OrderBy(t => t.CreatedUtc)
+            .Select(t => $"{t.ToolName}: {TrimForPrompt(t.ResultSummary, 1200)}")
+            .ToArray();
+
+        var prompt = new StringBuilder();
+        prompt.AppendLine("用户要求继续上一条被中止的回复。请只从该回复中断处继续完成，不要回到更早的话题。");
+        if (sourceUser is not null)
+        {
+            prompt.AppendLine();
+            prompt.AppendLine("上一条用户问题:");
+            prompt.AppendLine(sourceUser.Content.Trim());
+        }
+
+        prompt.AppendLine();
+        prompt.AppendLine("已生成的上一条回复正文:");
+        prompt.AppendLine(stoppedAssistant.Content.Trim());
+
+        if (toolResults.Length > 0)
+        {
+            prompt.AppendLine();
+            prompt.AppendLine("上一条回复已获得的工具结果，可直接基于这些结果继续，避免重复调用同一工具:");
+            foreach (var toolResult in toolResults)
+            {
+                prompt.AppendLine(toolResult);
+            }
+        }
+
+        prompt.AppendLine();
+        prompt.AppendLine("现在请继续补全这条回复。");
+        return prompt.ToString();
+    }
+
+    private static bool IsContinuationRequest(string message)
+    {
+        var normalized = message.Trim()
+            .Trim('。', '.', '！', '!', '？', '?', '~', '～')
+            .Replace(" ", string.Empty, StringComparison.Ordinal);
+        return normalized is "继续"
+            or "接着"
+            or "继续说"
+            or "接着说"
+            or "往下"
+            or "往下说"
+            or "继续回复"
+            or "继续生成"
+            or "接着生成"
+            or "说下去"
+            or "继续上面"
+            or "继续刚才";
+    }
+
+    private static string TrimForPrompt(string value, int maxLength)
+        => value.Length <= maxLength ? value : value[..maxLength] + Environment.NewLine + "...";
+
     private static IReadOnlyList<AgentMessage> BuildCleanChatHistory(
         IReadOnlyList<AgentMessage> messages,
         long includeUserBeforeAssistantId)
@@ -1273,11 +1408,14 @@ public sealed class AgentService : IAgentService
 
     private static bool IsCleanAssistantHistoryMessage(AgentMessage message)
         => message.Status == AgentMessageStatus.Complete
-            && string.IsNullOrWhiteSpace(message.ActivityText)
+            && (string.IsNullOrWhiteSpace(message.ActivityText) || IsStoppedByUserMessage(message))
             && string.IsNullOrWhiteSpace(message.Error)
             && !string.IsNullOrWhiteSpace(message.Content)
             && !string.Equals(message.Content.Trim(), WaitingForToolApprovalText, StringComparison.Ordinal)
             && !string.Equals(message.Content.Trim(), "正在思考...", StringComparison.Ordinal);
+
+    private static bool IsStoppedByUserMessage(AgentMessage message)
+        => string.Equals(message.ActivityText?.Trim(), StoppedByUserActivityText, StringComparison.Ordinal);
 
     private static ChatRole ToChatRole(AgentMessageRole role)
         => role switch

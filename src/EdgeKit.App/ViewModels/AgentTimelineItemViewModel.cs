@@ -284,13 +284,13 @@ public sealed class AgentTimelineItemViewModel : INotifyPropertyChanged
     private static bool ShouldAutoExpand(AgentToolCall toolCall)
         => toolCall.ApprovalStatus == AgentToolApprovalStatus.Pending
             || toolCall.ExecutionStatus is AgentToolExecutionStatus.Pending
-                or AgentToolExecutionStatus.Running
-                or AgentToolExecutionStatus.Failed;
+                or AgentToolExecutionStatus.Running;
 
     private void ApplyAutomaticExpansion(AgentToolCall? previous, AgentToolCall current)
     {
         if (current.ApprovalStatus == AgentToolApprovalStatus.Pending
-            || current.ExecutionStatus is AgentToolExecutionStatus.Pending or AgentToolExecutionStatus.Running or AgentToolExecutionStatus.Failed)
+            || current.ExecutionStatus is AgentToolExecutionStatus.Pending or AgentToolExecutionStatus.Running
+            || (current.ExecutionStatus == AgentToolExecutionStatus.Failed && previous?.ExecutionStatus != AgentToolExecutionStatus.Failed))
         {
             SetExpandedFromState(true);
         }
@@ -305,6 +305,17 @@ public sealed class AgentTimelineItemViewModel : INotifyPropertyChanged
             return;
         }
 
+        SetExpandedFromState(false);
+    }
+
+    public void CollapseFailedToolCallForNewTurn()
+    {
+        if (_toolCall?.ExecutionStatus != AgentToolExecutionStatus.Failed)
+        {
+            return;
+        }
+
+        _hasUserToggledExpansion = false;
         SetExpandedFromState(false);
     }
 

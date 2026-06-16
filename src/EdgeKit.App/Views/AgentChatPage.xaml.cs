@@ -5,6 +5,7 @@ using EdgeKit.Native;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using Serilog;
 using Windows.System;
@@ -14,6 +15,9 @@ namespace EdgeKit.App.Views;
 public sealed partial class AgentChatPage : Page
 {
     private const int StatusAutoCloseDelayMs = 2500;
+    private static readonly Brush StopButtonBrush = new SolidColorBrush(global::Windows.UI.Color.FromArgb(255, 196, 43, 43));
+    private static readonly Brush StopButtonHoverBrush = new SolidColorBrush(global::Windows.UI.Color.FromArgb(255, 220, 62, 62));
+    private static readonly Brush StopButtonPressedBrush = new SolidColorBrush(global::Windows.UI.Color.FromArgb(255, 160, 28, 28));
 
     private readonly ObservableCollection<AgentTimelineItemViewModel> _timeline = new();
     private readonly HashSet<long> _toolActionsInProgress = new();
@@ -29,6 +33,9 @@ public sealed partial class AgentChatPage : Page
     private bool _streamFlushScheduled;
     private AgentTimelineItemViewModel? _streamingAssistantItem;
     private AgentTimelineItemViewModel? _preferredScrollItem;
+    private long _activeTurnAssistantMessageId;
+    private readonly HashSet<long> _scrolledToolCallIdsThisTurn = new();
+    private CancellationTokenSource? _sendCancellation;
     private CancellationTokenSource? _statusAutoCloseCts;
 
     public AgentChatPage()
@@ -54,6 +61,9 @@ public sealed partial class AgentChatPage : Page
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
         base.OnNavigatedFrom(e);
+        _sendCancellation?.Cancel();
+        _sendCancellation?.Dispose();
+        _sendCancellation = null;
         if (_agent is not null)
         {
             _agent.Changed -= OnAgentChanged;
@@ -124,6 +134,9 @@ public sealed partial class AgentChatPage : Page
             return;
         }
 
+        _preferredScrollItem = null;
+        _activeTurnAssistantMessageId = 0;
+        _scrolledToolCallIdsThisTurn.Clear();
         RebuildTimeline(detail);
         ScrollToPreferredItemOrEnd(force: true);
     }
@@ -147,6 +160,11 @@ public sealed partial class AgentChatPage : Page
         }
 
         UpsertToolCalls(detail.ToolCalls);
+        if (_sending)
+        {
+            return;
+        }
+
         ScrollToPreferredItemOrEnd();
     }
 
@@ -161,7 +179,9 @@ public sealed partial class AgentChatPage : Page
 
         foreach (var orphan in orphanTools)
         {
-            _timeline.Add(new AgentTimelineItemViewModel(orphan));
+            var item = new AgentTimelineItemViewModel(orphan);
+            _timeline.Add(item);
+            RememberInitialScrollTool(item);
         }
 
         foreach (var message in detail.Messages.OrderBy(m => m.CreatedUtc).ThenBy(m => m.Sequence))
@@ -179,7 +199,7 @@ public sealed partial class AgentChatPage : Page
             {
                 var item = new AgentTimelineItemViewModel(tool);
                 _timeline.Add(item);
-                RememberPreferredScrollTool(item);
+                RememberInitialScrollTool(item);
             }
 
             _timeline.Add(new AgentTimelineItemViewModel(message));
@@ -277,6 +297,12 @@ public sealed partial class AgentChatPage : Page
 
     private async void OnSendClick(object sender, RoutedEventArgs e)
     {
+        if (_sending)
+        {
+            CancelCurrentSend();
+            return;
+        }
+
         await RunSafelyAsync(SendCurrentPromptAsync);
     }
 
@@ -295,6 +321,11 @@ public sealed partial class AgentChatPage : Page
         }
 
         e.Handled = true;
+        if (_sending)
+        {
+            return;
+        }
+
         await RunSafelyAsync(SendCurrentPromptAsync);
     }
 
@@ -321,13 +352,17 @@ public sealed partial class AgentChatPage : Page
         var conversationId = _selectedConversationId;
         var shouldGenerateTitle = ShouldGenerateTitle(conversationId);
         PromptBox.Text = string.Empty;
+        BeginNewTurnUiState();
         SetBusy(true);
         PromptBox.Focus(FocusState.Programmatic);
         _streamingAssistantItem = null;
+        _sendCancellation?.Dispose();
+        _sendCancellation = new CancellationTokenSource();
+        var token = _sendCancellation.Token;
 
         try
         {
-            await foreach (var item in _agent.SendStreamingAsync(conversationId, text))
+            await foreach (var item in _agent.SendStreamingAsync(conversationId, text, token))
             {
                 EnqueueStreamEvent(item);
             }
@@ -339,14 +374,44 @@ public sealed partial class AgentChatPage : Page
                 ScheduleConversationTitleGeneration(conversationId, text);
             }
         }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            await FlushPendingStreamEventsAsync(force: true);
+            ShowStatus("已中止", "已中止本次回复。", InfoBarSeverity.Informational);
+        }
         finally
         {
             _streamingAssistantItem = null;
             _pendingStreamEvents.Clear();
             _streamFlushScheduled = false;
+            _sendCancellation?.Dispose();
+            _sendCancellation = null;
             SetBusy(false);
             PromptBox.Focus(FocusState.Programmatic);
             LoadConversations(keepSelection: true);
+            RefreshConversationDetail();
+        }
+    }
+
+    private void CancelCurrentSend()
+    {
+        if (_sendCancellation?.IsCancellationRequested == true)
+        {
+            return;
+        }
+
+        _sendCancellation?.Cancel();
+        ShowStatus("正在中止", "正在停止当前回复...", InfoBarSeverity.Informational);
+    }
+
+    private void BeginNewTurnUiState()
+    {
+        _preferredScrollItem = null;
+        _activeTurnAssistantMessageId = 0;
+        _scrolledToolCallIdsThisTurn.Clear();
+        foreach (var tool in _timeline.Where(i => i.ToolCall?.ExecutionStatus == AgentToolExecutionStatus.Failed))
+        {
+            tool.CollapseFailedToolCallForNewTurn();
         }
     }
 
@@ -392,6 +457,7 @@ public sealed partial class AgentChatPage : Page
         }
 
         ScrollToPreferredItemOrEnd(force: true);
+        ClearConsumedScrollTarget();
     }
 
     private void ApplyStreamEvent(AgentStreamEvent item, bool scroll = true)
@@ -419,6 +485,7 @@ public sealed partial class AgentChatPage : Page
             if (item.Kind == AgentStreamEventKind.Started)
             {
                 _streamingAssistantItem.StreamedContent = string.Empty;
+                _activeTurnAssistantMessageId = item.AssistantMessage.Id;
             }
         }
 
@@ -459,6 +526,7 @@ public sealed partial class AgentChatPage : Page
         if (scroll)
         {
             ScrollToPreferredItemOrEnd(force: true);
+            ClearConsumedScrollTarget();
         }
     }
 
@@ -532,19 +600,45 @@ public sealed partial class AgentChatPage : Page
 
     private void RememberPreferredScrollTool(AgentTimelineItemViewModel item)
     {
-        if (item.ToolCall is null)
+        if (item.ToolCall is null
+            || _activeTurnAssistantMessageId <= 0
+            || item.ToolCall.MessageId != _activeTurnAssistantMessageId)
         {
             return;
         }
 
         if (item.ToolCall.ApprovalStatus == AgentToolApprovalStatus.Pending
-            || item.ToolCall.ExecutionStatus is AgentToolExecutionStatus.Pending or AgentToolExecutionStatus.Running or AgentToolExecutionStatus.Failed)
+            || item.ToolCall.ExecutionStatus is AgentToolExecutionStatus.Pending or AgentToolExecutionStatus.Running)
+        {
+            _preferredScrollItem = item;
+            return;
+        }
+
+        if (item.ToolCall.ExecutionStatus == AgentToolExecutionStatus.Failed
+            && _scrolledToolCallIdsThisTurn.Add(item.ToolCall.Id))
         {
             _preferredScrollItem = item;
             return;
         }
 
         if (ReferenceEquals(_preferredScrollItem, item))
+        {
+            _preferredScrollItem = null;
+        }
+    }
+
+    private void RememberInitialScrollTool(AgentTimelineItemViewModel item)
+    {
+        if (item.ToolCall?.ApprovalStatus == AgentToolApprovalStatus.Pending
+            || item.ToolCall?.ExecutionStatus is AgentToolExecutionStatus.Pending or AgentToolExecutionStatus.Running)
+        {
+            _preferredScrollItem = item;
+        }
+    }
+
+    private void ClearConsumedScrollTarget()
+    {
+        if (_preferredScrollItem?.ToolCall?.ExecutionStatus == AgentToolExecutionStatus.Failed)
         {
             _preferredScrollItem = null;
         }
@@ -881,8 +975,23 @@ public sealed partial class AgentChatPage : Page
     private void SetBusy(bool busy)
     {
         _sending = busy;
-        SendButton.IsEnabled = !busy;
         ConversationList.IsEnabled = !busy;
+        SendIcon.Glyph = busy ? "\uE769" : "\uE724";
+        ToolTipService.SetToolTip(SendButton, busy ? "中止回复" : "发送");
+        SendButton.Style = busy ? null : (Style)Application.Current.Resources["AccentButtonStyle"];
+        SendButton.Background = busy ? StopButtonBrush : null;
+        SendButton.Foreground = (Brush)Application.Current.Resources["EdgeTextBrush"];
+        SendButton.BorderBrush = busy ? StopButtonHoverBrush : null;
+        if (busy)
+        {
+            SendButton.Resources["ButtonBackgroundPointerOver"] = StopButtonHoverBrush;
+            SendButton.Resources["ButtonBackgroundPressed"] = StopButtonPressedBrush;
+        }
+        else
+        {
+            SendButton.Resources.Remove("ButtonBackgroundPointerOver");
+            SendButton.Resources.Remove("ButtonBackgroundPressed");
+        }
     }
 
     private void ShowStatus(string title, string message, InfoBarSeverity severity)

@@ -253,11 +253,16 @@
                          PlaceholderText="输入消息，Enter 发送，Shift/Alt+Enter 换行" />
                 <Button x:Name="SendButton"
                         Grid.Column="1"
-                        Content="发送"
-                        Width="82"
+                        Width="46"
+                        Height="42"
                         VerticalAlignment="Bottom"
                         Style="{ThemeResource AccentButtonStyle}"
-                        Click="OnSendClick" />
+                        ToolTipService.ToolTip="发送"
+                        Click="OnSendClick">
+                    <FontIcon x:Name="SendIcon"
+                              FontSize="16"
+                              Glyph="&#xE724;" />
+                </Button>
             </Grid>
         </Grid>
 
