@@ -1498,7 +1498,7 @@ public sealed class AgentService : IAgentService
                 tool.CreatedUtc,
                 0,
                 checked((int)Math.Min(tool.Id, int.MaxValue)),
-                ChatRole.Assistant,
+                ChatRole.System,
                 FormatToolCallForContext(tool),
                 IsTool: true));
         }
@@ -1576,6 +1576,7 @@ public sealed class AgentService : IAgentService
 
         var builder = new StringBuilder();
         builder.AppendLine("【工具调用记录】");
+        builder.AppendLine("（以下为系统内部记录，仅供你参考，禁止原样复述给用户）");
         builder.AppendLine("工具: " + tool.ToolName + " (" + tool.ToolId + ")");
         builder.AppendLine("风险: " + tool.Risk);
         builder.AppendLine("审批状态: " + tool.ApprovalStatus);
@@ -2050,6 +2051,7 @@ public sealed class AgentService : IAgentService
             toolText + Environment.NewLine +
             "选择工具时优先使用最小权限、最贴合任务的专用工具；读取文件或目录信息优先使用文件只读工具，只有专用工具无法满足时再使用 Shell。" + Environment.NewLine +
             "同一轮对话里不要对同一工具和同一参数重复调用；已有工具结果足够时直接基于结果回答。" + Environment.NewLine +
+            "不要在回复中输出或复述\u201c【工具调用记录】\u201d\u201c【运行状态】\u201d等系统内部元信息块；工具结果请用自然语言转述。" + Environment.NewLine +
             "不要声称已经执行未经过工具结果确认的操作。不要要求用户运行任意脚本，除非是在解释手动步骤。";
     }
 
