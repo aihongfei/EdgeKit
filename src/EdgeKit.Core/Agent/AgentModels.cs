@@ -141,7 +141,12 @@ public sealed record AgentContextStatus(
     int CompressionSummaryCount,
     bool IsCompressing,
     DateTime? LastCompressedUtc,
-    string Preview);
+    string Preview,
+    int SystemTokens = 0,
+    int ToolsTokens = 0,
+    int ConversationTokens = 0,
+    int InstructionsTokens = 0,
+    int ToolDefinitionsTokens = 0);
 
 public sealed record AgentConversationDetail(
     AgentConversation Conversation,

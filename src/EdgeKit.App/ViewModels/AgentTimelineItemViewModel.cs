@@ -99,7 +99,7 @@ public sealed class AgentTimelineItemViewModel : INotifyPropertyChanged
     public Brush BubbleBorderBrush => Resource("EdgeLineBrush");
 
     public string ReplyLoadingText => string.IsNullOrWhiteSpace(ActivityText)
-        ? "正在回复..."
+        ? "正在思考..."
         : ActivityText;
 
     public string Content

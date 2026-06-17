@@ -418,6 +418,7 @@ public sealed class AgentService : IAgentService
                 excludeMessageId: userMessage.Id).ConfigureAwait(false);
             var session = await CreateSessionAsync(agent, preparedContext, cancellationToken).ConfigureAwait(false);
             var runMessage = BuildContinuationPromptIfNeeded(preparedContext.Detail, trimmedMessage, userMessage.Id) ?? trimmedMessage;
+            var charsSinceContextUpdate = 0;
             await foreach (var update in agent.RunStreamingAsync(
                     runMessage,
                     session,
@@ -428,9 +429,20 @@ public sealed class AgentService : IAgentService
                 if (!string.IsNullOrEmpty(delta))
                 {
                     responseText.Append(delta);
+                    charsSinceContextUpdate += delta.Length;
                     await writer.WriteAsync(
                         new AgentStreamEvent(AgentStreamEventKind.Delta, userMessage, assistantMessage, delta, GetToolCalls(conversationId), string.Empty),
                         cancellationToken).ConfigureAwait(false);
+
+                    if (charsSinceContextUpdate >= 512)
+                    {
+                        charsSinceContextUpdate = 0;
+                        detail = _repository.GetConversation(conversationId) ?? detail;
+                        var streamingContextStatus = BuildContextPackage(detail, settings, null, userMessage.Id).Status;
+                        await writer.WriteAsync(
+                            new AgentStreamEvent(AgentStreamEventKind.ContextChanged, userMessage, assistantMessage, string.Empty, GetToolCalls(conversationId), string.Empty, streamingContextStatus),
+                            cancellationToken).ConfigureAwait(false);
+                    }
                 }
 
                 lastToolSignature = await WriteToolChangesIfNeededAsync(
@@ -1433,13 +1445,16 @@ public sealed class AgentService : IAgentService
             .ToArray();
 
         var messages = new List<Microsoft.Extensions.AI.ChatMessage>();
+        var summaryContext = string.Empty;
         if (summary is not null && !string.IsNullOrWhiteSpace(summary.Summary))
         {
-            messages.Add(new Microsoft.Extensions.AI.ChatMessage(
-                ChatRole.System,
+            summaryContext =
                 "以下是较早会话上下文的自动压缩摘要。后续对话需要把它当作真实历史背景使用：" +
                 Environment.NewLine +
-                summary.Summary.Trim()));
+                summary.Summary.Trim();
+            messages.Add(new Microsoft.Extensions.AI.ChatMessage(
+                ChatRole.System,
+                summaryContext));
         }
 
         foreach (var entry in visibleEntries)
@@ -1447,9 +1462,45 @@ public sealed class AgentService : IAgentService
             messages.Add(new Microsoft.Extensions.AI.ChatMessage(entry.Role, entry.Content));
         }
 
-        var estimatedTokens = messages.Sum(m => EstimateTokens(m.Text ?? string.Empty) + 8);
+        var instructions = BuildInstructions(AgentConversationMode.Chat, settings);
+        var toolDescriptors = _toolRegistry.GetTools(AgentConversationMode.Chat, settings)
+            .Where(d => _toolExecutor.ShouldExposeTool(d, settings))
+            .ToArray();
+        var toolSchemasJson = string.Join("\n", toolDescriptors.Select(d => AgentToolSchemas.ForTool(d.Id).GetRawText()));
+
+        var estimatedTokens = messages.Sum(m => EstimateTokens(m.Text ?? string.Empty) + 8)
+            + EstimateTokens(instructions) + 8
+            + EstimateTokens(toolSchemasJson) + 8;
         var preview = BuildContextPreview(messages);
         var compressing = IsCompressionInProgress(detail.Conversation.Id);
+
+        int systemTokens = 0, toolsTokens = 0, conversationTokens = 0;
+        if (!string.IsNullOrWhiteSpace(summaryContext))
+        {
+            systemTokens += EstimateTokens(summaryContext) + 8;
+        }
+
+        foreach (var entry in visibleEntries)
+        {
+            var tokens = EstimateTokens(entry.Content) + 8;
+            if (entry.IsTool)
+            {
+                toolsTokens += tokens;
+            }
+            else if (entry.Role == ChatRole.System)
+            {
+                systemTokens += tokens;
+            }
+            else
+            {
+                conversationTokens += tokens;
+            }
+        }
+
+        var instructionsTokens = EstimateTokens(instructions) + 8;
+        var toolDefinitionsTokens = EstimateTokens(toolSchemasJson) + 8;
+        systemTokens += instructionsTokens + toolDefinitionsTokens;
+
         var status = new AgentContextStatus(
             detail.Conversation.Id,
             estimatedTokens,
@@ -1460,7 +1511,12 @@ public sealed class AgentService : IAgentService
             summary is null ? 0 : 1,
             compressing,
             summary?.UpdatedUtc,
-            preview);
+            preview,
+            systemTokens,
+            toolsTokens,
+            conversationTokens,
+            instructionsTokens,
+            toolDefinitionsTokens);
         return new AgentContextPackage(detail, messages, status, summary, visibleEntries);
     }
 

@@ -34,14 +34,13 @@ public sealed partial class AgentChatPage : Page
     private bool _conversationDeleteDialogOpen;
     private bool _streamFlushScheduled;
     private AgentTimelineItemViewModel? _streamingAssistantItem;
-    private AgentTimelineItemViewModel? _preferredScrollItem;
     private long _activeTurnAssistantMessageId;
     private AgentContextStatus? _contextStatus;
-    private readonly HashSet<long> _scrolledToolCallIdsThisTurn = new();
     private CancellationTokenSource? _sendCancellation;
     private CancellationTokenSource? _statusAutoCloseCts;
     private ScrollViewer? _messageScrollViewer;
     private bool _scrollUpdateScheduled;
+    private bool _autoFollowCurrentTurn;
 
     public AgentChatPage()
     {
@@ -49,6 +48,7 @@ public sealed partial class AgentChatPage : Page
         _timeline.CollectionChanged += OnTimelineCollectionChanged;
         MessageList.ItemsSource = _timeline;
         PromptBox.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(OnPromptKeyDown), handledEventsToo: true);
+        MessageList.AddHandler(UIElement.PointerWheelChangedEvent, new PointerEventHandler(OnMessageListPointerWheelChanged), handledEventsToo: true);
     }
 
     private void OnTimelineCollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
@@ -204,12 +204,12 @@ public sealed partial class AgentChatPage : Page
             return;
         }
 
-        _preferredScrollItem = null;
         _activeTurnAssistantMessageId = 0;
-        _scrolledToolCallIdsThisTurn.Clear();
+        _autoFollowCurrentTurn = true;
         RebuildTimeline(detail);
         UpdateContextStatus(_agent.GetContextStatus(_selectedConversationId));
-        ScrollToPreferredItemOrEnd(force: true);
+        ScrollMessagesToEnd(force: true);
+        _autoFollowCurrentTurn = false;
     }
 
     private void RefreshConversationDetail()
@@ -237,7 +237,7 @@ public sealed partial class AgentChatPage : Page
             return;
         }
 
-        ScrollToPreferredItemOrEnd();
+        ScrollMessagesToEnd();
     }
 
     private void RebuildTimeline(AgentConversationDetail detail)
@@ -253,7 +253,6 @@ public sealed partial class AgentChatPage : Page
         {
             var item = new AgentTimelineItemViewModel(orphan);
             _timeline.Add(item);
-            RememberInitialScrollTool(item);
         }
 
         foreach (var message in detail.Messages.OrderBy(m => m.CreatedUtc).ThenBy(m => m.Sequence))
@@ -271,7 +270,6 @@ public sealed partial class AgentChatPage : Page
             {
                 var item = new AgentTimelineItemViewModel(tool);
                 _timeline.Add(item);
-                RememberInitialScrollTool(item);
             }
 
             _timeline.Add(new AgentTimelineItemViewModel(message));
@@ -423,6 +421,7 @@ public sealed partial class AgentChatPage : Page
 
         var conversationId = _selectedConversationId;
         var shouldGenerateTitle = ShouldGenerateTitle(conversationId);
+        _autoFollowCurrentTurn = true;
         PromptBox.Text = string.Empty;
         BeginNewTurnUiState();
         SetBusy(true);
@@ -461,6 +460,7 @@ public sealed partial class AgentChatPage : Page
             SetBusy(false);
             PromptBox.Focus(FocusState.Programmatic);
             LoadConversations(keepSelection: true);
+            _autoFollowCurrentTurn = false;
             RefreshConversationDetail();
         }
     }
@@ -478,9 +478,7 @@ public sealed partial class AgentChatPage : Page
 
     private void BeginNewTurnUiState()
     {
-        _preferredScrollItem = null;
         _activeTurnAssistantMessageId = 0;
-        _scrolledToolCallIdsThisTurn.Clear();
         foreach (var tool in _timeline.Where(i => i.ToolCall?.ExecutionStatus == AgentToolExecutionStatus.Failed))
         {
             tool.CollapseFailedToolCallForNewTurn();
@@ -497,7 +495,7 @@ public sealed partial class AgentChatPage : Page
 
         _streamFlushScheduled = true;
         DispatcherQueue.TryEnqueue(
-            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+            Microsoft.UI.Dispatching.DispatcherQueuePriority.Normal,
             () =>
             {
                 _streamFlushScheduled = false;
@@ -528,8 +526,7 @@ public sealed partial class AgentChatPage : Page
             ApplyStreamEvent(_pendingStreamEvents.Dequeue(), scroll: false);
         }
 
-        ScrollToPreferredItemOrEnd(force: true);
-        ClearConsumedScrollTarget();
+        ScrollMessagesToEnd(force: false);
     }
 
     private void ApplyStreamEvent(AgentStreamEvent item, bool scroll = true)
@@ -601,8 +598,7 @@ public sealed partial class AgentChatPage : Page
 
         if (scroll)
         {
-            ScrollToPreferredItemOrEnd(force: true);
-            ClearConsumedScrollTarget();
+            ScrollMessagesToEnd();
         }
     }
 
@@ -645,12 +641,10 @@ public sealed partial class AgentChatPage : Page
             if (_toolCallIndex.TryGetValue(call.Id, out var existing))
             {
                 existing.UpdateToolCall(call);
-                RememberPreferredScrollTool(existing);
                 continue;
             }
 
             var item = new AgentTimelineItemViewModel(call);
-            RememberPreferredScrollTool(item);
             var relatedMessage = call.MessageId is long messageId && _messageIndex.TryGetValue(messageId, out var related)
                 ? related
                 : null;
@@ -669,52 +663,6 @@ public sealed partial class AgentChatPage : Page
             {
                 _timeline.Add(item);
             }
-        }
-    }
-
-    private void RememberPreferredScrollTool(AgentTimelineItemViewModel item)
-    {
-        if (item.ToolCall is null
-            || _activeTurnAssistantMessageId <= 0
-            || item.ToolCall.MessageId != _activeTurnAssistantMessageId)
-        {
-            return;
-        }
-
-        if (item.ToolCall.ApprovalStatus == AgentToolApprovalStatus.Pending
-            || item.ToolCall.ExecutionStatus is AgentToolExecutionStatus.Pending or AgentToolExecutionStatus.Running)
-        {
-            _preferredScrollItem = item;
-            return;
-        }
-
-        if (item.ToolCall.ExecutionStatus == AgentToolExecutionStatus.Failed
-            && _scrolledToolCallIdsThisTurn.Add(item.ToolCall.Id))
-        {
-            _preferredScrollItem = item;
-            return;
-        }
-
-        if (ReferenceEquals(_preferredScrollItem, item))
-        {
-            _preferredScrollItem = null;
-        }
-    }
-
-    private void RememberInitialScrollTool(AgentTimelineItemViewModel item)
-    {
-        if (item.ToolCall?.ApprovalStatus == AgentToolApprovalStatus.Pending
-            || item.ToolCall?.ExecutionStatus is AgentToolExecutionStatus.Pending or AgentToolExecutionStatus.Running)
-        {
-            _preferredScrollItem = item;
-        }
-    }
-
-    private void ClearConsumedScrollTarget()
-    {
-        if (_preferredScrollItem?.ToolCall?.ExecutionStatus == AgentToolExecutionStatus.Failed)
-        {
-            _preferredScrollItem = null;
         }
     }
 
@@ -1074,32 +1022,57 @@ public sealed partial class AgentChatPage : Page
         _contextStatus = status;
         if (status is null)
         {
-            ContextProgressRing.IsIndeterminate = false;
-            ContextProgressRing.Value = 0;
-            ContextPercentText.Text = "0%";
-            ContextUsageBar.Value = 0;
-            ContextSummaryText.Text = "暂无上下文信息。";
+            ContextCircularProgress.Value = 0;
+            ContextCircularProgress.CenterText = "0%";
+            ContextFlyoutCircularProgress.Value = 0;
+            ContextFlyoutCircularProgress.CenterText = "0%";
+            ContextFlyoutPercentText.Text = "0% Full";
+            ContextFlyoutTokensText.Text = "0 / 0 Tokens";
+            ContextUsedTokensText.Text = "0";
+            ContextRemainingTokensText.Text = "0";
+            ContextSystemTokensText.Text = "0";
+            ContextToolsTokensText.Text = "0";
+            ContextConversationTokensText.Text = "0";
+            ContextInstructionsTokensText.Text = "0";
+            ContextToolDefinitionsTokensText.Text = "0";
             ContextCompressingPanel.Visibility = Visibility.Collapsed;
             return;
         }
 
         var percent = Math.Clamp((int)Math.Round(status.UsageRatio * 100), 0, 999);
         var ringValue = Math.Clamp(percent, 0, 100);
-        ContextProgressRing.IsIndeterminate = status.IsCompressing;
-        if (!status.IsCompressing)
+        var remainingTokens = Math.Max(status.ContextWindowTokens - status.EstimatedTokens, 0);
+        var centerText = percent > 99 ? "99+" : percent.ToString();
+
+        ContextCircularProgress.Value = ringValue;
+        ContextCircularProgress.CenterText = centerText;
+        ContextFlyoutCircularProgress.Value = ringValue;
+        ContextFlyoutCircularProgress.CenterText = percent + "%";
+        ContextFlyoutPercentText.Text = percent + "% Full";
+        ContextFlyoutTokensText.Text = $"~{FormatCompactTokens(status.EstimatedTokens)} / {FormatCompactTokens(status.ContextWindowTokens)} Tokens";
+        ContextUsedTokensText.Text = FormatCompactTokens(status.EstimatedTokens);
+        ContextRemainingTokensText.Text = FormatCompactTokens(remainingTokens);
+        ContextSystemTokensText.Text = FormatCompactTokens(status.SystemTokens);
+        ContextToolsTokensText.Text = FormatCompactTokens(status.ToolsTokens);
+        ContextConversationTokensText.Text = FormatCompactTokens(status.ConversationTokens);
+        ContextInstructionsTokensText.Text = FormatCompactTokens(status.InstructionsTokens);
+        ContextToolDefinitionsTokensText.Text = FormatCompactTokens(status.ToolDefinitionsTokens);
+        ContextCompressingPanel.Visibility = status.IsCompressing ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private static string FormatCompactTokens(int tokens)
+    {
+        if (tokens >= 1_000_000)
         {
-            ContextProgressRing.Value = ringValue;
+            return (tokens / 1_000_000d).ToString("0.#") + "M";
         }
 
-        ContextPercentText.Text = percent.ToString() + "%";
-        ContextUsageBar.Value = ringValue;
-        ContextCompressingPanel.Visibility = status.IsCompressing ? Visibility.Visible : Visibility.Collapsed;
-        ContextSummaryText.Text =
-            $"约 {status.EstimatedTokens:N0} / {status.ContextWindowTokens:N0} tokens" + Environment.NewLine +
-            $"消息: {status.MessageCount:N0}  工具摘要: {status.ToolSummaryCount:N0}  压缩摘要: {status.CompressionSummaryCount:N0}" +
-            (status.LastCompressedUtc is null
-                ? string.Empty
-                : Environment.NewLine + "最近压缩: " + status.LastCompressedUtc.Value.ToLocalTime().ToString("MM-dd HH:mm"));
+        if (tokens >= 1_000)
+        {
+            return (tokens / 1_000d).ToString("0.#") + "K";
+        }
+
+        return tokens.ToString("N0");
     }
 
     private void OnContextStatusClick(object sender, RoutedEventArgs e)
@@ -1196,36 +1169,12 @@ public sealed partial class AgentChatPage : Page
         ScrollMessagesToEndCore(force);
     }
 
-    private void ScrollToPreferredItemOrEnd(bool force = false)
+    private void OnMessageListPointerWheelChanged(object sender, PointerRoutedEventArgs e)
     {
-        var target = _preferredScrollItem;
-        if (target is not null && _timeline.Contains(target))
+        if (_sending)
         {
-            ScrollTimelineItemIntoView(target, force);
-            return;
+            _autoFollowCurrentTurn = false;
         }
-
-        _preferredScrollItem = null;
-        ScrollMessagesToEnd(force);
-    }
-
-    private void ScrollTimelineItemIntoView(AgentTimelineItemViewModel item, bool force)
-        => ScrollTimelineItemIntoViewCore(item, force);
-
-    private void ScrollTimelineItemIntoViewCore(AgentTimelineItemViewModel item, bool force)
-    {
-        var sv = GetMessageScrollViewer();
-        if (sv is null)
-        {
-            return;
-        }
-
-        if (!force && sv.ScrollableHeight - sv.VerticalOffset > 80)
-        {
-            return;
-        }
-
-        MessageList.ScrollIntoView(item);
     }
 
     private void ScrollMessagesToEndCore(bool force)
@@ -1236,17 +1185,13 @@ public sealed partial class AgentChatPage : Page
             return;
         }
 
-        if (!force && sv.ScrollableHeight - sv.VerticalOffset > 80)
+        if (!ShouldScrollMessagesToEnd(force))
         {
             return;
         }
 
-        if (_timeline.Count > 0)
-        {
-            MessageList.ScrollIntoView(_timeline[^1]);
-        }
-
-        // 用一次低优先级排队收敛布局，避免每个流式 delta 都触发同步 UpdateLayout 抖动。
+        // 避免同步 ScrollIntoView 与低优先级 ChangeView 互相冲突导致抖动；
+        // 只保留一次低优先级排队，在布局收敛后滚到最底部。
         if (_scrollUpdateScheduled)
         {
             return;
@@ -1261,6 +1206,15 @@ public sealed partial class AgentChatPage : Page
                 var inner = GetMessageScrollViewer();
                 inner?.ChangeView(null, inner.ScrollableHeight, null, disableAnimation: true);
             });
+    }
+
+    private bool ShouldScrollMessagesToEnd(bool force)
+        => force || _autoFollowCurrentTurn || IsNearMessageListBottom();
+
+    private bool IsNearMessageListBottom()
+    {
+        var sv = GetMessageScrollViewer();
+        return sv is null || sv.ScrollableHeight - sv.VerticalOffset <= 80;
     }
 
     private ScrollViewer? GetMessageScrollViewer()

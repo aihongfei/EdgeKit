@@ -98,40 +98,222 @@
                          IsClosable="True" />
                 <Button x:Name="ContextStatusButton"
                         Grid.Column="1"
-                        Width="74"
+                        Width="36"
                         Height="36"
+                        MinWidth="0"
+                        Padding="0"
                         Margin="8,0,0,0"
                         HorizontalAlignment="Right"
+                        Background="Transparent"
+                        BorderBrush="Transparent"
+                        BorderThickness="0"
+                        CornerRadius="18"
                         ToolTipService.ToolTip="上下文信息"
                         Click="OnContextStatusClick">
-                    <Grid>
-                        <ProgressRing x:Name="ContextProgressRing"
-                                      Width="30"
-                                      Height="30"
-                                      Minimum="0"
-                                      Maximum="100"
-                                      Value="0"
-                                      IsIndeterminate="False"
-                                      IsActive="True" />
-                        <TextBlock x:Name="ContextPercentText"
-                                   Text="0%"
-                                   FontSize="10"
-                                   HorizontalAlignment="Center"
-                                   VerticalAlignment="Center"
-                                   Foreground="{ThemeResource EdgeTextBrush}" />
-                    </Grid>
+                    <Button.Resources>
+                        <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#14FFFFFF" />
+                        <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#22FFFFFF" />
+                        <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="Transparent" />
+                        <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="Transparent" />
+                    </Button.Resources>
+                    <controls:CircularProgress x:Name="ContextCircularProgress"
+                                                Width="28"
+                                                Height="28"
+                                                RingThickness="3"
+                                                RingBrush="#A78BFA"
+                                                UnfilledRingBrush="#354047"
+                                                CenterTextSize="8" />
                     <Button.Flyout>
                         <Flyout>
-                            <ScrollViewer Width="440"
-                                          MaxHeight="520">
-                                <StackPanel Spacing="10">
-                                    <TextBlock Text="上下文信息"
-                                               FontSize="18"
-                                               FontWeight="SemiBold"
-                                               Foreground="{ThemeResource EdgeTextBrush}" />
-                                    <TextBlock x:Name="ContextSummaryText"
-                                               TextWrapping="Wrap"
-                                               Foreground="{ThemeResource EdgeMutedBrush}" />
+                            <Border Width="320"
+                                    Padding="14"
+                                    Background="{ThemeResource EdgePanelBrush}"
+                                    BorderBrush="{ThemeResource EdgeLineBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="14">
+                                <StackPanel Spacing="14">
+                                    <Grid ColumnSpacing="10">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="Context Usage"
+                                                   FontSize="16"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{ThemeResource EdgeTextBrush}" />
+                                        <TextBlock x:Name="ContextFlyoutTokensText"
+                                                   Grid.Column="1"
+                                                   MaxWidth="172"
+                                                   FontSize="13"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{ThemeResource EdgeMutedBrush}" />
+                                    </Grid>
+
+                                    <StackPanel HorizontalAlignment="Center" Spacing="6">
+                                        <controls:CircularProgress x:Name="ContextFlyoutCircularProgress"
+                                                                   Width="128"
+                                                                   Height="128"
+                                                                   RingThickness="12"
+                                                                   RingBrush="#A78BFA"
+                                                                   UnfilledRingBrush="#354047"
+                                                                   CenterTextSize="24" />
+                                        <TextBlock x:Name="ContextFlyoutPercentText"
+                                                   FontSize="13"
+                                                   TextAlignment="Center"
+                                                   Foreground="{ThemeResource EdgeMutedBrush}" />
+                                    </StackPanel>
+
+                                    <Grid ColumnSpacing="10">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Border Padding="10,8"
+                                                Background="{ThemeResource EdgeControlBrush}"
+                                                BorderBrush="{ThemeResource EdgeLineBrush}"
+                                                BorderThickness="1"
+                                                CornerRadius="10">
+                                            <StackPanel Spacing="6">
+                                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                                    <Border Width="8"
+                                                            Height="8"
+                                                            CornerRadius="4"
+                                                            VerticalAlignment="Center"
+                                                            Background="#A78BFA" />
+                                                    <TextBlock Text="已用"
+                                                               Foreground="{ThemeResource EdgeMutedBrush}" />
+                                                </StackPanel>
+                                                <TextBlock x:Name="ContextUsedTokensText"
+                                                           FontSize="15"
+                                                           FontWeight="SemiBold"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           Foreground="{ThemeResource EdgeTextBrush}" />
+                                            </StackPanel>
+                                        </Border>
+                                        <Border Grid.Column="1"
+                                                Padding="10,8"
+                                                Background="{ThemeResource EdgeControlBrush}"
+                                                BorderBrush="{ThemeResource EdgeLineBrush}"
+                                                BorderThickness="1"
+                                                CornerRadius="10">
+                                            <StackPanel Spacing="6">
+                                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                                    <Border Width="8"
+                                                            Height="8"
+                                                            CornerRadius="4"
+                                                            VerticalAlignment="Center"
+                                                            Background="#354047" />
+                                                    <TextBlock Text="未用"
+                                                               Foreground="{ThemeResource EdgeMutedBrush}" />
+                                                </StackPanel>
+                                                <TextBlock x:Name="ContextRemainingTokensText"
+                                                           FontSize="15"
+                                                           FontWeight="SemiBold"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           Foreground="{ThemeResource EdgeTextBrush}" />
+                                            </StackPanel>
+                                        </Border>
+                                    </Grid>
+
+                                    <StackPanel x:Name="ContextBreakdownPanel" Spacing="10">
+                                        <Grid ColumnSpacing="10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <Border Width="8"
+                                                    Height="8"
+                                                    CornerRadius="4"
+                                                    VerticalAlignment="Center"
+                                                    Background="#9CA3AF" />
+                                            <TextBlock Grid.Column="1"
+                                                       Text="System Prompt"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       Foreground="{ThemeResource EdgeTextBrush}" />
+                                            <TextBlock x:Name="ContextSystemTokensText"
+                                                       Grid.Column="2"
+                                                       Foreground="{ThemeResource EdgeMutedBrush}" />
+                                        </Grid>
+                                        <Grid ColumnSpacing="10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <Border Width="8"
+                                                    Height="8"
+                                                    CornerRadius="4"
+                                                    VerticalAlignment="Center"
+                                                    Background="#A78BFA" />
+                                            <TextBlock Grid.Column="1"
+                                                       Text="Tools"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       Foreground="{ThemeResource EdgeTextBrush}" />
+                                            <TextBlock x:Name="ContextToolsTokensText"
+                                                       Grid.Column="2"
+                                                       Foreground="{ThemeResource EdgeMutedBrush}" />
+                                        </Grid>
+                                        <Grid ColumnSpacing="10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <Border Width="8"
+                                                    Height="8"
+                                                    CornerRadius="4"
+                                                    VerticalAlignment="Center"
+                                                    Background="#F59E0B" />
+                                            <TextBlock Grid.Column="1"
+                                                       Text="Conversation"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       Foreground="{ThemeResource EdgeTextBrush}" />
+                                            <TextBlock x:Name="ContextConversationTokensText"
+                                                       Grid.Column="2"
+                                                       Foreground="{ThemeResource EdgeMutedBrush}" />
+                                        </Grid>
+                                        <Grid ColumnSpacing="10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <Border Width="8"
+                                                    Height="8"
+                                                    CornerRadius="4"
+                                                    VerticalAlignment="Center"
+                                                    Background="#10B981" />
+                                            <TextBlock Grid.Column="1"
+                                                       Text="Instructions"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       Foreground="{ThemeResource EdgeTextBrush}" />
+                                            <TextBlock x:Name="ContextInstructionsTokensText"
+                                                       Grid.Column="2"
+                                                       Foreground="{ThemeResource EdgeMutedBrush}" />
+                                        </Grid>
+                                        <Grid ColumnSpacing="10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <Border Width="8"
+                                                    Height="8"
+                                                    CornerRadius="4"
+                                                    VerticalAlignment="Center"
+                                                    Background="#EF4444" />
+                                            <TextBlock Grid.Column="1"
+                                                       Text="Tool Definitions"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       Foreground="{ThemeResource EdgeTextBrush}" />
+                                            <TextBlock x:Name="ContextToolDefinitionsTokensText"
+                                                       Grid.Column="2"
+                                                       Foreground="{ThemeResource EdgeMutedBrush}" />
+                                        </Grid>
+                                    </StackPanel>
+
                                     <Border x:Name="ContextCompressingPanel"
                                             Visibility="Collapsed"
                                             Background="{ThemeResource EdgeControlBrush}"
@@ -147,16 +329,8 @@
                                                        Foreground="{ThemeResource EdgeMutedBrush}" />
                                         </StackPanel>
                                     </Border>
-                                    <TextBlock Text="上下文用量"
-                                               FontWeight="SemiBold"
-                                               Foreground="{ThemeResource EdgeTextBrush}" />
-                                    <ProgressBar x:Name="ContextUsageBar"
-                                                 Minimum="0"
-                                                 Maximum="100"
-                                                 Value="0"
-                                                 Height="8" />
                                 </StackPanel>
-                            </ScrollViewer>
+                            </Border>
                         </Flyout>
                     </Button.Flyout>
                 </Button>
