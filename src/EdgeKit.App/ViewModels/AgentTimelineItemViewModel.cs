@@ -13,6 +13,9 @@ public enum AgentTimelineItemKind
 
 public sealed class AgentTimelineItemViewModel : INotifyPropertyChanged
 {
+    private const string WaitingForToolApprovalText = "等待确认工具调用...";
+    private static readonly Brush ToolErrorBrush = new SolidColorBrush(global::Windows.UI.Color.FromArgb(255, 255, 99, 99));
+
     private AgentMessage? _message;
     private AgentToolCall? _toolCall;
     private string _streamedContent = string.Empty;
@@ -28,7 +31,6 @@ public sealed class AgentTimelineItemViewModel : INotifyPropertyChanged
     public AgentTimelineItemViewModel(AgentToolCall toolCall)
     {
         _toolCall = toolCall;
-        _isExpanded = ShouldAutoExpand(toolCall);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -47,9 +49,7 @@ public sealed class AgentTimelineItemViewModel : INotifyPropertyChanged
 
     public Visibility ToolVisibility => Kind == AgentTimelineItemKind.ToolCall ? Visibility.Visible : Visibility.Collapsed;
 
-    public Visibility LoadingVisibility => _isStreaming
-        && string.IsNullOrWhiteSpace(Content)
-        && string.IsNullOrWhiteSpace(ActivityText)
+    public Visibility LoadingVisibility => ShouldShowReplyLoading
             ? Visibility.Visible
             : Visibility.Collapsed;
 
@@ -63,7 +63,9 @@ public sealed class AgentTimelineItemViewModel : INotifyPropertyChanged
         ? Visibility.Visible
         : Visibility.Collapsed;
 
-    public Visibility ActivityVisibility => _message?.Role == AgentMessageRole.Assistant && !string.IsNullOrWhiteSpace(ActivityText)
+    public Visibility ActivityVisibility => _message?.Role == AgentMessageRole.Assistant
+        && LoadingVisibility != Visibility.Visible
+        && !string.IsNullOrWhiteSpace(ActivityText)
         ? Visibility.Visible
         : Visibility.Collapsed;
 
@@ -96,6 +98,10 @@ public sealed class AgentTimelineItemViewModel : INotifyPropertyChanged
 
     public Brush BubbleBorderBrush => Resource("EdgeLineBrush");
 
+    public string ReplyLoadingText => string.IsNullOrWhiteSpace(ActivityText)
+        ? "正在回复..."
+        : ActivityText;
+
     public string Content
     {
         get
@@ -116,12 +122,25 @@ public sealed class AgentTimelineItemViewModel : INotifyPropertyChanged
 
     public string ActivityText => _message?.ActivityText ?? string.Empty;
 
+    private bool ShouldShowReplyLoading
+        => _message?.Role == AgentMessageRole.Assistant
+            && _message.Status == AgentMessageStatus.Pending
+            && string.IsNullOrWhiteSpace(Content)
+            && !IsWaitingForToolApproval;
+
+    private bool IsWaitingForToolApproval
+        => string.Equals(ActivityText, WaitingForToolApprovalText, StringComparison.Ordinal);
+
     public string TimeText
         => (_message?.CreatedUtc ?? _toolCall?.CreatedUtc ?? DateTime.UtcNow).ToLocalTime().ToString("HH:mm");
 
     public string ToolTitle => _toolCall is null ? string.Empty : $"{_toolCall.ToolName} · {RiskText}";
 
     public string ToolStatusText => _toolCall is null ? string.Empty : $"{ApprovalText} / {ExecutionText}";
+
+    public Brush ToolStatusBrush => IsToolFailed
+        ? ToolErrorBrush
+        : Resource("EdgeMutedBrush");
 
     public string ToolSummary
     {
@@ -167,6 +186,10 @@ public sealed class AgentTimelineItemViewModel : INotifyPropertyChanged
     }
 
     public bool CanApprove => _toolCall?.ApprovalStatus == AgentToolApprovalStatus.Pending;
+
+    private bool IsToolFailed
+        => _toolCall?.ExecutionStatus == AgentToolExecutionStatus.Failed
+            || !string.IsNullOrWhiteSpace(_toolCall?.Error);
 
     public bool IsExpanded
     {
@@ -230,9 +253,7 @@ public sealed class AgentTimelineItemViewModel : INotifyPropertyChanged
 
     public void UpdateToolCall(AgentToolCall toolCall)
     {
-        var previous = _toolCall;
         _toolCall = toolCall;
-        ApplyAutomaticExpansion(previous, toolCall);
         RaiseToolProperties();
     }
 
@@ -281,21 +302,6 @@ public sealed class AgentTimelineItemViewModel : INotifyPropertyChanged
         _ => _toolCall?.ExecutionStatus.ToString() ?? string.Empty
     };
 
-    private static bool ShouldAutoExpand(AgentToolCall toolCall)
-        => toolCall.ApprovalStatus == AgentToolApprovalStatus.Pending
-            || toolCall.ExecutionStatus is AgentToolExecutionStatus.Pending
-                or AgentToolExecutionStatus.Running;
-
-    private void ApplyAutomaticExpansion(AgentToolCall? previous, AgentToolCall current)
-    {
-        if (current.ApprovalStatus == AgentToolApprovalStatus.Pending
-            || current.ExecutionStatus is AgentToolExecutionStatus.Pending or AgentToolExecutionStatus.Running
-            || (current.ExecutionStatus == AgentToolExecutionStatus.Failed && previous?.ExecutionStatus != AgentToolExecutionStatus.Failed))
-        {
-            SetExpandedFromState(true);
-        }
-    }
-
     public void CollapseCompletedToolCall()
     {
         if (_toolCall is null
@@ -339,6 +345,7 @@ public sealed class AgentTimelineItemViewModel : INotifyPropertyChanged
     {
         Raise(nameof(Content));
         Raise(nameof(ActivityText));
+        Raise(nameof(ReplyLoadingText));
         Raise(nameof(ContentVisibility));
         Raise(nameof(PlainContentVisibility));
         Raise(nameof(MarkdownContentVisibility));
@@ -357,6 +364,7 @@ public sealed class AgentTimelineItemViewModel : INotifyPropertyChanged
         Raise(nameof(ToolActionVisibility));
         Raise(nameof(ToolTitle));
         Raise(nameof(ToolStatusText));
+        Raise(nameof(ToolStatusBrush));
         Raise(nameof(ToolSummary));
         Raise(nameof(ToolDetail));
         Raise(nameof(CanApprove));
@@ -386,9 +394,11 @@ public sealed class AgentTimelineItemViewModel : INotifyPropertyChanged
             nameof(UseMarkdownPreview),
             nameof(Content),
             nameof(ActivityText),
+            nameof(ReplyLoadingText),
             nameof(TimeText),
             nameof(ToolTitle),
             nameof(ToolStatusText),
+            nameof(ToolStatusBrush),
             nameof(ToolSummary),
             nameof(ToolDetail),
             nameof(CanApprove),

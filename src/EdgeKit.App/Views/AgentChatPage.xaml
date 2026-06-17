@@ -204,7 +204,7 @@
                                         <ProgressRing Width="18"
                                                       Height="18"
                                                       IsActive="True" />
-                                        <TextBlock Text="正在思考..."
+                                        <TextBlock Text="{Binding ReplyLoadingText}"
                                                    VerticalAlignment="Center"
                                                    Foreground="{ThemeResource EdgeMutedBrush}" />
                                     </StackPanel>
@@ -277,7 +277,7 @@
                                                        Text="{Binding ToolStatusText}"
                                                        FontSize="12"
                                                        VerticalAlignment="Center"
-                                                       Foreground="{ThemeResource EdgeMutedBrush}" />
+                                                       Foreground="{Binding ToolStatusBrush}" />
                                             <StackPanel Grid.Column="2"
                                                         Orientation="Horizontal"
                                                         Spacing="6"
