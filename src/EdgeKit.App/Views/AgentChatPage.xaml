@@ -36,7 +36,9 @@
                       SelectionChanged="OnConversationSelectionChanged">
                 <ListView.ItemTemplate>
                     <DataTemplate>
-                        <Grid Padding="4" ColumnSpacing="8">
+                        <Grid Padding="4" ColumnSpacing="8"
+                              PointerEntered="OnConversationItemPointerEntered"
+                              PointerExited="OnConversationItemPointerExited">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
@@ -61,11 +63,13 @@
                                            Foreground="{ThemeResource EdgeMutedBrush}"
                                            TextTrimming="CharacterEllipsis" />
                             </StackPanel>
-                            <Button Grid.Column="1"
+                            <Button x:Name="ConversationItemDeleteButton"
+                                    Grid.Column="1"
                                     Content="删除"
                                     MinWidth="52"
                                     Padding="8,2"
                                     VerticalAlignment="Center"
+                                    Visibility="Collapsed"
                                     Tag="{Binding Id}"
                                     PointerPressed="OnConversationDeletePointerPressed"
                                     Click="OnDeleteConversationClick" />

@@ -1,6 +1,7 @@
 using EdgeKit.App.Interaction;
 using EdgeKit.Core.Recent;
 using EdgeKit.Core.Services;
+using EdgeKit.Services.Settings;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml.Controls;
@@ -104,6 +105,14 @@ public sealed partial class SettingsPage : Page
         RecentToolsVisibleRowsBox.Value = _settings.RecentToolsVisibleRows;
         ShowHomeClipboardHistorySwitch.IsOn = _settings.ShowHomeClipboardHistory;
         QuickLaunchVisibleRowsBox.Value = _settings.QuickLaunchVisibleRows;
+        YoudaoAppKeyBox.Password = string.Empty;
+        YoudaoAppKeyHintText.Text = string.IsNullOrWhiteSpace(_settings.YoudaoAppKeyPreview)
+            ? "未配置有道 App Key"
+            : "已配置有道 App Key " + _settings.YoudaoAppKeyPreview;
+        YoudaoAppSecretBox.Password = string.Empty;
+        YoudaoAppSecretHintText.Text = string.IsNullOrWhiteSpace(_settings.YoudaoAppSecretPreview)
+            ? "未配置有道 App Secret"
+            : "已配置有道 App Secret " + _settings.YoudaoAppSecretPreview;
 
         _loading = false;
     }
@@ -560,5 +569,33 @@ public sealed partial class SettingsPage : Page
         // 从全局容器解析仓储，清除全部最近记录。
         var repo = App.Services.GetService<IRecentItemsRepository>();
         repo?.Clear(null);
+    }
+
+    private void OnYoudaoAppKeyChanged(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        if (_loading || _settings is null || string.IsNullOrWhiteSpace(YoudaoAppKeyBox.Password))
+        {
+            return;
+        }
+
+        var key = YoudaoAppKeyBox.Password.Trim();
+        _settings.YoudaoAppKeyEncrypted = SecretProtector.Protect(key);
+        _settings.YoudaoAppKeyPreview = SecretProtector.BuildPreview(key);
+        _settings.Save();
+        YoudaoAppKeyHintText.Text = "已配置有道 App Key " + _settings.YoudaoAppKeyPreview;
+    }
+
+    private void OnYoudaoAppSecretChanged(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        if (_loading || _settings is null || string.IsNullOrWhiteSpace(YoudaoAppSecretBox.Password))
+        {
+            return;
+        }
+
+        var secret = YoudaoAppSecretBox.Password.Trim();
+        _settings.YoudaoAppSecretEncrypted = SecretProtector.Protect(secret);
+        _settings.YoudaoAppSecretPreview = SecretProtector.BuildPreview(secret);
+        _settings.Save();
+        YoudaoAppSecretHintText.Text = "已配置有道 App Secret " + _settings.YoudaoAppSecretPreview;
     }
 }

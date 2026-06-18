@@ -86,6 +86,10 @@ public sealed partial class DrawerWindow
         {
             ContentFrame.Navigate(typeof(AgentChatPage), new AgentChatPageParameter(_agentService));
         }
+        else if (toolId == "text.translate")
+        {
+            ContentFrame.Navigate(typeof(TranslateToolsPage), new TranslateToolsPageParameter(_agentService, _youdaoService, _hwnd));
+        }
         else if (tool.Category == ToolCategory.Text)
         {
             ContentFrame.Navigate(typeof(TextToolsPage), new TextToolsPageParameter(toolId, _textTools, _hwnd));

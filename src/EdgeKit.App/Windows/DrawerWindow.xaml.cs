@@ -64,6 +64,7 @@ public sealed partial class DrawerWindow : Window
     private readonly FileLockService _fileLocks;
     private readonly ImageProcessingService _imageTools;
     private readonly TextProcessingService _textTools;
+    private readonly YoudaoTranslationService _youdaoService;
     private readonly IAgentService _agentService;
 
     // 抽屉基础宽度（收缩态，物理像素）下限。
@@ -145,6 +146,7 @@ public sealed partial class DrawerWindow : Window
         FileLockService fileLocks,
         ImageProcessingService imageTools,
         TextProcessingService textTools,
+        YoudaoTranslationService youdaoService,
         IAgentService agentService)
     {
         _settings = settings;
@@ -168,6 +170,7 @@ public sealed partial class DrawerWindow : Window
         _fileLocks = fileLocks;
         _imageTools = imageTools;
         _textTools = textTools;
+        _youdaoService = youdaoService;
         _agentService = agentService;
         InitializeComponent();
 

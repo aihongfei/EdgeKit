@@ -93,8 +93,9 @@ public partial class App : Application
         var fileLocks = Services.GetRequiredService<FileLockService>();
         var imageTools = Services.GetRequiredService<ImageProcessingService>();
         var textTools = Services.GetRequiredService<TextProcessingService>();
+        var youdaoService = Services.GetRequiredService<YoudaoTranslationService>();
         var agentService = Services.GetRequiredService<IAgentService>();
-        var drawerWindow = new DrawerWindow(settings, shellViewModel, recentItems, quickLaunchItems, quickLaunchActions, homeViewModel, windowMonitor, searchCoordinator, appIndex, commandRegistry, commandExecutor, customCommands, clipboardService, clipboardViewModel, systemDiagnostics, hostsFileService, environmentVariables, windowManagement, fileLocks, imageTools, textTools, agentService);
+        var drawerWindow = new DrawerWindow(settings, shellViewModel, recentItems, quickLaunchItems, quickLaunchActions, homeViewModel, windowMonitor, searchCoordinator, appIndex, commandRegistry, commandExecutor, customCommands, clipboardService, clipboardViewModel, systemDiagnostics, hostsFileService, environmentVariables, windowManagement, fileLocks, imageTools, textTools, youdaoService, agentService);
         drawerWindow.Closed += OnDrawerWindowClosed;
         _drawerWindow = drawerWindow;
 
@@ -199,6 +200,7 @@ public partial class App : Application
         services.AddSingleton<FileLockService>();
         services.AddSingleton<ImageProcessingService>();
         services.AddSingleton<TextProcessingService>();
+        services.AddSingleton<YoudaoTranslationService>();
         services.AddSingleton(new HttpClient
         {
             Timeout = TimeSpan.FromSeconds(30)

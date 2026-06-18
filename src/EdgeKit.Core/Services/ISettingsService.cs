@@ -113,6 +113,14 @@ public interface ISettingsService
 
     int AiContextWindowTokens { get; set; }
 
+    string YoudaoAppKeyEncrypted { get; set; }
+
+    string YoudaoAppKeyPreview { get; set; }
+
+    string YoudaoAppSecretEncrypted { get; set; }
+
+    string YoudaoAppSecretPreview { get; set; }
+
     /// <summary>加载持久化的设置。</summary>
     void Load();
 

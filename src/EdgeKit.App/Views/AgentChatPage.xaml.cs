@@ -301,6 +301,51 @@ public sealed partial class AgentChatPage : Page
         PromptBox.Focus(FocusState.Programmatic);
     }
 
+    private void OnConversationItemPointerEntered(object sender, PointerRoutedEventArgs e)
+    {
+        if (sender is DependencyObject root)
+        {
+            var button = FindDeleteButton(root);
+            if (button is not null)
+            {
+                button.Visibility = Visibility.Visible;
+            }
+        }
+    }
+
+    private void OnConversationItemPointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        if (sender is DependencyObject root)
+        {
+            var button = FindDeleteButton(root);
+            if (button is not null)
+            {
+                button.Visibility = Visibility.Collapsed;
+            }
+        }
+    }
+
+    private static Button? FindDeleteButton(DependencyObject parent)
+    {
+        var count = VisualTreeHelper.GetChildrenCount(parent);
+        for (var i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is Button button && button.Name == "ConversationItemDeleteButton")
+            {
+                return button;
+            }
+
+            var result = FindDeleteButton(child);
+            if (result is not null)
+            {
+                return result;
+            }
+        }
+
+        return null;
+    }
+
     private async void OnDeleteConversationClick(object sender, RoutedEventArgs e)
     {
         if (_agent is null || _sending || _conversationDeleteDialogOpen || (sender as FrameworkElement)?.Tag is not long id)

@@ -23,10 +23,11 @@
                     <MenuFlyout Opening="OnCardFlyoutOpening" />
                 </Border.ContextFlyout>
 
-                <Grid RowSpacing="8">
+                <Grid RowSpacing="6">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
                     <!-- 顶部：类型角标 + 固定标记 -->
@@ -81,6 +82,15 @@
                            Source="{x:Bind Thumbnail, Mode=OneTime}"
                            Stretch="Uniform" HorizontalAlignment="Left"
                            Visibility="{x:Bind IsImage, Mode=OneTime}" />
+
+                    <!-- 底部：复制时间 -->
+                    <TextBlock Grid.Row="2"
+                               Text="{x:Bind TimeLabel, Mode=OneTime}"
+                               HorizontalAlignment="Right"
+                               VerticalAlignment="Center"
+                               FontSize="11"
+                               Foreground="{ThemeResource EdgeMutedBrush}"
+                               ToolTipService.ToolTip="{x:Bind AbsoluteTimeLabel, Mode=OneTime}" />
                 </Grid>
             </Border>
         </DataTemplate>

@@ -21,6 +21,9 @@ public enum ToolCategory
     /// <summary>智能体。</summary>
     Agent,
 
+    /// <summary>翻译。</summary>
+    Translation,
+
     /// <summary>文本工具。</summary>
     Text,
 
@@ -53,6 +56,7 @@ public static class ToolCategoryInfo
         ToolCategory.Snippets => "常用片段",
         ToolCategory.Command => "命令面板",
         ToolCategory.Agent => "智能体",
+        ToolCategory.Translation => "翻译",
         ToolCategory.Text => "文本工具",
         ToolCategory.Json => "JSON 工具",
         ToolCategory.Developer => "开发者工具",
@@ -70,6 +74,7 @@ public static class ToolCategoryInfo
         ToolCategory.Snippets => "\uE7C3",
         ToolCategory.Command => "\uE756",
         ToolCategory.Agent => "\uE8D7",
+        ToolCategory.Translation => "\uE9F3",
         ToolCategory.Text => "\uE8E9",
         ToolCategory.Json => "\uE943",
         ToolCategory.Developer => "\uEC7A",

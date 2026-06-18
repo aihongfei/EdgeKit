@@ -272,6 +272,34 @@ public sealed class SettingsService : ISettingsService
         set => SetField(ref _aiContextWindowTokens, ClampContextWindowTokens(value));
     }
 
+    private string _youdaoAppKeyEncrypted = string.Empty;
+    public string YoudaoAppKeyEncrypted
+    {
+        get => _youdaoAppKeyEncrypted;
+        set => SetField(ref _youdaoAppKeyEncrypted, value?.Trim() ?? string.Empty);
+    }
+
+    private string _youdaoAppKeyPreview = string.Empty;
+    public string YoudaoAppKeyPreview
+    {
+        get => _youdaoAppKeyPreview;
+        set => SetField(ref _youdaoAppKeyPreview, value?.Trim() ?? string.Empty);
+    }
+
+    private string _youdaoAppSecretEncrypted = string.Empty;
+    public string YoudaoAppSecretEncrypted
+    {
+        get => _youdaoAppSecretEncrypted;
+        set => SetField(ref _youdaoAppSecretEncrypted, value?.Trim() ?? string.Empty);
+    }
+
+    private string _youdaoAppSecretPreview = string.Empty;
+    public string YoudaoAppSecretPreview
+    {
+        get => _youdaoAppSecretPreview;
+        set => SetField(ref _youdaoAppSecretPreview, value?.Trim() ?? string.Empty);
+    }
+
     public void Load()
     {
         var values = _store.LoadAll();
@@ -318,6 +346,10 @@ public sealed class SettingsService : ISettingsService
         _aiShellCommandWhitelist = NormalizeMultiline(GetString(values, nameof(AiShellCommandWhitelist), _aiShellCommandWhitelist));
         _aiMcpServersJson = GetString(values, nameof(AiMcpServersJson), _aiMcpServersJson);
         _aiContextWindowTokens = ClampContextWindowTokens(GetInt(values, nameof(AiContextWindowTokens), _aiContextWindowTokens));
+        _youdaoAppKeyEncrypted = GetString(values, nameof(YoudaoAppKeyEncrypted), _youdaoAppKeyEncrypted);
+        _youdaoAppKeyPreview = GetString(values, nameof(YoudaoAppKeyPreview), _youdaoAppKeyPreview);
+        _youdaoAppSecretEncrypted = GetString(values, nameof(YoudaoAppSecretEncrypted), _youdaoAppSecretEncrypted);
+        _youdaoAppSecretPreview = GetString(values, nameof(YoudaoAppSecretPreview), _youdaoAppSecretPreview);
 
         Changed?.Invoke(this, EventArgs.Empty);
     }
@@ -360,6 +392,10 @@ public sealed class SettingsService : ISettingsService
         _store.Set(nameof(AiShellCommandWhitelist), _aiShellCommandWhitelist);
         _store.Set(nameof(AiMcpServersJson), _aiMcpServersJson);
         _store.Set(nameof(AiContextWindowTokens), _aiContextWindowTokens.ToString(CultureInfo.InvariantCulture));
+        _store.Set(nameof(YoudaoAppKeyEncrypted), _youdaoAppKeyEncrypted);
+        _store.Set(nameof(YoudaoAppKeyPreview), _youdaoAppKeyPreview);
+        _store.Set(nameof(YoudaoAppSecretEncrypted), _youdaoAppSecretEncrypted);
+        _store.Set(nameof(YoudaoAppSecretPreview), _youdaoAppSecretPreview);
         _store.Save();
 
         Changed?.Invoke(this, EventArgs.Empty);

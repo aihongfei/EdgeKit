@@ -24,6 +24,9 @@ public sealed class ToolCatalog : IToolCatalog
         // 智能体
         new("agent.chat", "智能体", "\uE8D7", ToolCategory.Agent, 0, "多轮对话、翻译与 Windows 配置助手"),
 
+        // 翻译
+        new("text.translate", "翻译", "\uE9F3", ToolCategory.Translation, 0, "有道翻译与大模型翻译"),
+
         // 文本工具
         new("text.tools", "文本工具", "\uE8E9", ToolCategory.Text, 0, "JSON 编辑器与 URL / Base64 编码转换"),
         new("text.encode", "编码转换", "\uE8C1", ToolCategory.Text, 1, "URL / Base64 编解码"),

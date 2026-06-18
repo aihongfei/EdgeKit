@@ -77,6 +77,42 @@ public sealed class ClipboardItemViewModel
     public Visibility SourceVisibility =>
         string.IsNullOrWhiteSpace(SourceAppName) ? Visibility.Collapsed : Visibility.Visible;
 
+    /// <summary>复制时间（本地时间）的相对/友好文案。</summary>
+    public string TimeLabel
+    {
+        get
+        {
+            var local = Model.CreatedUtc.ToLocalTime();
+            var now = DateTime.Now;
+            var diff = now - local;
+
+            if (diff.TotalMinutes < 1)
+            {
+                return "刚刚";
+            }
+
+            if (diff.TotalHours < 1)
+            {
+                return $"{diff.TotalMinutes:0} 分钟前";
+            }
+
+            if (local.Date == now.Date)
+            {
+                return $"今天 {local:HH:mm}";
+            }
+
+            if (local.Date == now.Date.AddDays(-1))
+            {
+                return $"昨天 {local:HH:mm}";
+            }
+
+            return local.ToString("MM-dd HH:mm");
+        }
+    }
+
+    /// <summary>复制时间的完整绝对时间文案，供 ToolTip 使用。</summary>
+    public string AbsoluteTimeLabel => Model.CreatedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss");
+
     /// <summary>类型角标文案。</summary>
     public string KindLabel => Model.Kind switch
     {
