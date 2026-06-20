@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using EdgeKit.App.ViewModels;
 using EdgeKit.Services.Diagnostics;
 using Microsoft.UI.Dispatching;
@@ -13,6 +14,8 @@ public sealed partial class SystemDashboardPage : Page
     private SystemDashboardViewModel? _viewModel;
     private readonly DispatcherQueueTimer _timer;
     private bool _sampling;
+    private bool _captureInProgress;
+    private int _captureGeneration;
 
     public SystemDashboardPage()
     {
@@ -37,8 +40,10 @@ public sealed partial class SystemDashboardPage : Page
         DataContext = _viewModel;
         _sampling = true;
         SamplingButtonText.Text = "暂停";
-        CaptureAndRender();
-        _timer.Start();
+        StatusText.Text = "正在采集系统资源...";
+
+        _timer.Stop();
+        _ = CaptureAndRenderAsync();
     }
 
     protected override void OnNavigatedFrom(NavigationEventArgs e)
@@ -46,13 +51,14 @@ public sealed partial class SystemDashboardPage : Page
         base.OnNavigatedFrom(e);
         _timer.Stop();
         _sampling = false;
+        _captureGeneration++;
     }
 
     private void OnTimerTick(DispatcherQueueTimer sender, object args)
     {
         if (_sampling)
         {
-            CaptureAndRender();
+            _ = CaptureAndRenderAsync();
         }
     }
 
@@ -63,19 +69,45 @@ public sealed partial class SystemDashboardPage : Page
         StatusText.Text = _sampling ? "采样中" : "已暂停采样";
         if (_sampling)
         {
-            CaptureAndRender();
+            _ = CaptureAndRenderAsync();
         }
     }
 
-    private void CaptureAndRender()
+    private async Task CaptureAndRenderAsync()
     {
-        if (_viewModel is null)
+        if (_viewModel is null || _captureInProgress)
         {
             return;
         }
 
-        var snapshot = _viewModel.Capture();
-        RenderSnapshot(snapshot);
+        _captureInProgress = true;
+        var generation = _captureGeneration;
+
+        try
+        {
+            var viewModel = _viewModel;
+            var snapshot = await Task.Run(viewModel.CaptureSnapshot);
+
+            if (generation != _captureGeneration || _viewModel != viewModel)
+            {
+                return;
+            }
+
+            viewModel.ApplySnapshot(snapshot);
+            RenderSnapshot(snapshot);
+            if (_sampling)
+            {
+                _timer.Start();
+            }
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = "资源采集失败：" + ex.Message;
+        }
+        finally
+        {
+            _captureInProgress = false;
+        }
     }
 
     private void RenderSnapshot(SystemResourceSnapshot snapshot)
@@ -91,8 +123,8 @@ public sealed partial class SystemDashboardPage : Page
         DiskText.Text = FormatPercent(snapshot.DiskPercent);
         DiskList.ItemsSource = snapshot.DiskDetails;
 
-        NetworkReceiveText.Text = "↓ " + snapshot.NetworkReceiveText;
-        NetworkSendText.Text = "↑ " + snapshot.NetworkSendText;
+        NetworkReceiveText.Text = snapshot.NetworkReceiveText;
+        NetworkSendText.Text = snapshot.NetworkSendText;
         StatusText.Text = "更新于 " + snapshot.CapturedAt.ToString("HH:mm:ss");
     }
 

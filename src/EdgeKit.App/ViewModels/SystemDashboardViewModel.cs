@@ -6,6 +6,7 @@ namespace EdgeKit.App.ViewModels;
 public sealed class SystemDashboardViewModel
 {
     private readonly SystemResourceMonitorService _monitor;
+    private readonly object _captureLock = new();
 
     public SystemDashboardViewModel(SystemResourceMonitorService monitor)
     {
@@ -18,7 +19,21 @@ public sealed class SystemDashboardViewModel
 
     public SystemResourceSnapshot Capture()
     {
-        var snapshot = _monitor.Capture();
+        var snapshot = CaptureSnapshot();
+        ApplySnapshot(snapshot);
+        return snapshot;
+    }
+
+    public SystemResourceSnapshot CaptureSnapshot()
+    {
+        lock (_captureLock)
+        {
+            return _monitor.Capture();
+        }
+    }
+
+    public void ApplySnapshot(SystemResourceSnapshot snapshot)
+    {
         Current = snapshot;
 
         History.Add(new SystemResourcePoint(
@@ -34,8 +49,6 @@ public sealed class SystemDashboardViewModel
         {
             History.RemoveAt(0);
         }
-
-        return snapshot;
     }
 
     private static double ToMbps(long bytesPerSecond)

@@ -141,6 +141,11 @@
                     <TextBlock Text="磁盘" FontSize="13" Foreground="{StaticResource DiskColor}" />
                     <TextBlock x:Name="DiskText" Text="--%" Style="{StaticResource ResourceValueStyle}" Foreground="{StaticResource DiskColor}" />
                     <ItemsControl x:Name="DiskList">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Spacing="8" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="diagnostics:DiskInfo">
                                 <Grid RowSpacing="2">
@@ -166,13 +171,16 @@
                 </StackPanel>
             </Border>
             <Border Grid.Column="3" Style="{StaticResource PanelBorderStyle}" MinHeight="130">
-                <StackPanel Spacing="6">
+                <StackPanel Spacing="8">
                     <TextBlock Text="网络" FontSize="13" Foreground="{StaticResource NetworkColor}" />
-                    <StackPanel Spacing="2">
-                        <TextBlock x:Name="NetworkReceiveText" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource NetworkColor}" TextTrimming="CharacterEllipsis" />
-                        <TextBlock x:Name="NetworkSendText" FontSize="14" FontWeight="SemiBold" Foreground="#00B0FF" TextTrimming="CharacterEllipsis" />
-                    </StackPanel>
-                    <TextBlock Text="实时上下行速率" FontSize="11" Foreground="{ThemeResource EdgeMutedBrush}" />
+                  <StackPanel Spacing="1">
+                    <TextBlock Text="上传" FontSize="12" Foreground="#00B0FF" />
+                    <TextBlock x:Name="NetworkSendText" FontSize="16" FontWeight="SemiBold" Foreground="#00B0FF" TextTrimming="CharacterEllipsis" />
+                  </StackPanel>
+                  <StackPanel Spacing="1">
+                    <TextBlock Text="下载" FontSize="12" Foreground="{StaticResource NetworkColor}" />
+                    <TextBlock x:Name="NetworkReceiveText" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource NetworkColor}" TextTrimming="CharacterEllipsis" />
+                   </StackPanel>
                 </StackPanel>
             </Border>
         </Grid>
