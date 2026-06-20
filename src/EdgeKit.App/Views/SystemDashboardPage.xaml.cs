@@ -4,6 +4,7 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
+using Syncfusion.UI.Xaml.Charts;
 
 namespace EdgeKit.App.Views;
 
@@ -80,6 +81,7 @@ public sealed partial class SystemDashboardPage : Page
     private void RenderSnapshot(SystemResourceSnapshot snapshot)
     {
         CpuText.Text = FormatPercent(snapshot.CpuPercent);
+        CpuFrequencyText.Text = snapshot.CpuFrequencyGHz.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) + " GHz";
         CpuBar.Value = snapshot.CpuPercent;
 
         MemoryText.Text = FormatPercent(snapshot.MemoryPercent);
@@ -87,12 +89,22 @@ public sealed partial class SystemDashboardPage : Page
         MemoryBar.Value = snapshot.MemoryPercent;
 
         DiskText.Text = FormatPercent(snapshot.DiskPercent);
-        DiskDetailText.Text = "已用 " + snapshot.DiskUsedText + " / 可用 " + snapshot.DiskFreeText;
-        DiskBar.Value = snapshot.DiskPercent;
+        DiskList.ItemsSource = snapshot.DiskDetails;
 
-        NetworkText.Text = "↓ " + snapshot.NetworkReceiveText + "  ↑ " + snapshot.NetworkSendText;
-        NetworkDetailText.Text = "实时上下行速率";
+        NetworkReceiveText.Text = "↓ " + snapshot.NetworkReceiveText;
+        NetworkSendText.Text = "↑ " + snapshot.NetworkSendText;
         StatusText.Text = "更新于 " + snapshot.CapturedAt.ToString("HH:mm:ss");
+    }
+
+    private void OnDateTimeAxisLabelCreated(object sender, ChartAxisLabelEventArgs e)
+    {
+        if (DateTime.TryParse(e.Label, out var capturedAt))
+        {
+            e.Label = capturedAt.ToString("HH:mm:ss");
+            return;
+        }
+
+        e.Label = DateTime.FromOADate(e.Position).ToString("HH:mm:ss");
     }
 
     private static string FormatPercent(double value)

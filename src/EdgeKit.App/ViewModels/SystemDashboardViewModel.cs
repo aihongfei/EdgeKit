@@ -21,14 +21,14 @@ public sealed class SystemDashboardViewModel
         var snapshot = _monitor.Capture();
         Current = snapshot;
 
-        var networkBytes = snapshot.NetworkReceiveBytesPerSecond + snapshot.NetworkSendBytesPerSecond;
-        var networkScaled = Math.Clamp(networkBytes / 1024d, 0, 100);
         History.Add(new SystemResourcePoint(
             snapshot.CapturedAt,
             snapshot.CpuPercent,
+            snapshot.CpuFrequencyGHz,
             snapshot.MemoryPercent,
             snapshot.DiskPercent,
-            networkScaled));
+            ToMbps(snapshot.NetworkReceiveBytesPerSecond),
+            ToMbps(snapshot.NetworkSendBytesPerSecond)));
 
         while (History.Count > 60)
         {
@@ -37,11 +37,16 @@ public sealed class SystemDashboardViewModel
 
         return snapshot;
     }
+
+    private static double ToMbps(long bytesPerSecond)
+        => Math.Round(bytesPerSecond / (1024d * 1024d), 2);
 }
 
 public sealed record SystemResourcePoint(
     DateTime CapturedAt,
     double CpuPercent,
+    double CpuFrequencyGHz,
     double MemoryPercent,
     double DiskPercent,
-    double NetworkScaledPercent);
+    double NetworkReceiveMbps,
+    double NetworkSendMbps);

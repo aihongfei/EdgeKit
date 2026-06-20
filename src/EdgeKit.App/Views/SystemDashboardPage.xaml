@@ -4,6 +4,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:chart="using:Syncfusion.UI.Xaml.Charts"
+    xmlns:diagnostics="using:EdgeKit.Services.Diagnostics"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     Background="Transparent"
@@ -24,6 +25,63 @@
             <Setter Property="Padding" Value="10,5" />
             <Setter Property="Background" Value="{ThemeResource EdgeControlBrush}" />
             <Setter Property="BorderBrush" Value="{ThemeResource EdgeLineBrush}" />
+        </Style>
+
+        <!-- ECharts 风格资源色 -->
+        <SolidColorBrush x:Key="CpuColor" Color="#00D4AA" />
+        <SolidColorBrush x:Key="MemoryColor" Color="#FF4D94" />
+        <SolidColorBrush x:Key="DiskColor" Color="#FFAA00" />
+        <SolidColorBrush x:Key="NetworkColor" Color="#00E676" />
+
+        <LinearGradientBrush x:Key="CpuFillBrush" StartPoint="0,0" EndPoint="0,1">
+            <GradientStop Offset="0" Color="#6600D4AA" />
+            <GradientStop Offset="1" Color="#0000D4AA" />
+        </LinearGradientBrush>
+        <LinearGradientBrush x:Key="MemoryFillBrush" StartPoint="0,0" EndPoint="0,1">
+            <GradientStop Offset="0" Color="#66FF4D94" />
+            <GradientStop Offset="1" Color="#00FF4D94" />
+        </LinearGradientBrush>
+        <LinearGradientBrush x:Key="DiskFillBrush" StartPoint="0,0" EndPoint="0,1">
+            <GradientStop Offset="0" Color="#66FFAA00" />
+            <GradientStop Offset="1" Color="#00FFAA00" />
+        </LinearGradientBrush>
+        <LinearGradientBrush x:Key="NetworkReceiveFillBrush" StartPoint="0,0" EndPoint="0,1">
+            <GradientStop Offset="0" Color="#6600E676" />
+            <GradientStop Offset="1" Color="#0000E676" />
+        </LinearGradientBrush>
+        <LinearGradientBrush x:Key="NetworkSendFillBrush" StartPoint="0,0" EndPoint="0,1">
+            <GradientStop Offset="0" Color="#6600B0FF" />
+            <GradientStop Offset="1" Color="#0000B0FF" />
+        </LinearGradientBrush>
+
+        <Style x:Key="ResourceValueStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="24" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+
+        <Style x:Key="ChartAxisStyle" TargetType="chart:ChartAxis">
+            <Setter Property="AxisLineStyle">
+                <Setter.Value>
+                    <Style TargetType="Line">
+                        <Setter Property="Stroke" Value="{ThemeResource EdgeLineBrush}" />
+                        <Setter Property="StrokeThickness" Value="1" />
+                    </Style>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="MajorGridLineStyle">
+                <Setter.Value>
+                    <Style TargetType="Line">
+                        <Setter Property="Stroke" Value="#22FFFFFF" />
+                        <Setter Property="StrokeThickness" Value="1" />
+                        <Setter Property="StrokeDashArray" Value="4,4" />
+                    </Style>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="LabelStyle">
+                <Setter.Value>
+                    <chart:LabelStyle Foreground="{ThemeResource EdgeMutedBrush}" FontSize="11" />
+                </Setter.Value>
+            </Setter>
         </Style>
     </Page.Resources>
 
@@ -62,34 +120,59 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <Border Style="{StaticResource PanelBorderStyle}">
-                <StackPanel Spacing="8">
-                    <TextBlock Text="CPU" FontSize="13" Foreground="{ThemeResource EdgeMutedBrush}" />
-                    <TextBlock x:Name="CpuText" Text="--%" FontSize="24" FontWeight="SemiBold" Foreground="{ThemeResource EdgeTextBrush}" />
-                    <ProgressBar x:Name="CpuBar" Minimum="0" Maximum="100" />
+            <Border Style="{StaticResource PanelBorderStyle}" MinHeight="130">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="CPU" FontSize="13" Foreground="{StaticResource CpuColor}" />
+                    <TextBlock x:Name="CpuText" Text="--%" Style="{StaticResource ResourceValueStyle}" Foreground="{StaticResource CpuColor}" />
+                    <TextBlock x:Name="CpuFrequencyText" FontSize="11" Foreground="{ThemeResource EdgeMutedBrush}" TextTrimming="CharacterEllipsis" />
+                    <ProgressBar x:Name="CpuBar" Minimum="0" Maximum="100" Foreground="{StaticResource CpuColor}" />
                 </StackPanel>
             </Border>
-            <Border Grid.Column="1" Style="{StaticResource PanelBorderStyle}">
-                <StackPanel Spacing="8">
-                    <TextBlock Text="内存" FontSize="13" Foreground="{ThemeResource EdgeMutedBrush}" />
-                    <TextBlock x:Name="MemoryText" Text="--%" FontSize="24" FontWeight="SemiBold" Foreground="{ThemeResource EdgeTextBrush}" />
-                    <TextBlock x:Name="MemoryDetailText" FontSize="11" Foreground="{ThemeResource EdgeMutedBrush}" />
-                    <ProgressBar x:Name="MemoryBar" Minimum="0" Maximum="100" />
+            <Border Grid.Column="1" Style="{StaticResource PanelBorderStyle}" MinHeight="130">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="内存" FontSize="13" Foreground="{StaticResource MemoryColor}" />
+                    <TextBlock x:Name="MemoryText" Text="--%" Style="{StaticResource ResourceValueStyle}" Foreground="{StaticResource MemoryColor}" />
+                    <TextBlock x:Name="MemoryDetailText" FontSize="11" Foreground="{ThemeResource EdgeMutedBrush}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+                    <ProgressBar x:Name="MemoryBar" Minimum="0" Maximum="100" Foreground="{StaticResource MemoryColor}" />
                 </StackPanel>
             </Border>
-            <Border Grid.Column="2" Style="{StaticResource PanelBorderStyle}">
-                <StackPanel Spacing="8">
-                    <TextBlock Text="磁盘" FontSize="13" Foreground="{ThemeResource EdgeMutedBrush}" />
-                    <TextBlock x:Name="DiskText" Text="--%" FontSize="24" FontWeight="SemiBold" Foreground="{ThemeResource EdgeTextBrush}" />
-                    <TextBlock x:Name="DiskDetailText" FontSize="11" Foreground="{ThemeResource EdgeMutedBrush}" />
-                    <ProgressBar x:Name="DiskBar" Minimum="0" Maximum="100" />
+            <Border Grid.Column="2" Style="{StaticResource PanelBorderStyle}" MinHeight="130">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="磁盘" FontSize="13" Foreground="{StaticResource DiskColor}" />
+                    <TextBlock x:Name="DiskText" Text="--%" Style="{StaticResource ResourceValueStyle}" Foreground="{StaticResource DiskColor}" />
+                    <ItemsControl x:Name="DiskList">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="diagnostics:DiskInfo">
+                                <Grid RowSpacing="2">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{x:Bind Letter}" FontSize="11" Foreground="{StaticResource DiskColor}" />
+                                    <TextBlock Grid.Column="1" FontSize="10" Foreground="{ThemeResource EdgeMutedBrush}" TextTrimming="CharacterEllipsis" HorizontalAlignment="Right">
+                                        <Run Text="{x:Bind UsedText}" />
+                                        <Run Text="/" />
+                                        <Run Text="{x:Bind TotalText}" />
+                                    </TextBlock>
+                                    <ProgressBar Grid.Row="1" Grid.ColumnSpan="2" Minimum="0" Maximum="100" Value="{x:Bind UsedPercent}" Height="4" VerticalAlignment="Center" Foreground="{StaticResource DiskColor}" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
                 </StackPanel>
             </Border>
-            <Border Grid.Column="3" Style="{StaticResource PanelBorderStyle}">
-                <StackPanel Spacing="8">
-                    <TextBlock Text="网络" FontSize="13" Foreground="{ThemeResource EdgeMutedBrush}" />
-                    <TextBlock x:Name="NetworkText" Text="--" FontSize="18" FontWeight="SemiBold" Foreground="{ThemeResource EdgeTextBrush}" />
-                    <TextBlock x:Name="NetworkDetailText" FontSize="11" Foreground="{ThemeResource EdgeMutedBrush}" />
+            <Border Grid.Column="3" Style="{StaticResource PanelBorderStyle}" MinHeight="130">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="网络" FontSize="13" Foreground="{StaticResource NetworkColor}" />
+                    <StackPanel Spacing="2">
+                        <TextBlock x:Name="NetworkReceiveText" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource NetworkColor}" TextTrimming="CharacterEllipsis" />
+                        <TextBlock x:Name="NetworkSendText" FontSize="14" FontWeight="SemiBold" Foreground="#00B0FF" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                    <TextBlock Text="实时上下行速率" FontSize="11" Foreground="{ThemeResource EdgeMutedBrush}" />
                 </StackPanel>
             </Border>
         </Grid>
@@ -101,9 +184,10 @@
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
                 <TextBlock Text="最近 60 秒趋势" FontSize="15" FontWeight="SemiBold" Foreground="{ThemeResource EdgeTextBrush}" />
-                <Border Grid.Row="1" Background="{ThemeResource EdgeControlBrush}" CornerRadius="8"
+                <Border Grid.Row="1" Background="#0CFFFFFF" CornerRadius="8"
                         BorderBrush="{ThemeResource EdgeLineBrush}" BorderThickness="1">
-                    <chart:SfCartesianChart x:Name="ResourceChart" Margin="8" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+                    <chart:SfCartesianChart x:Name="ResourceChart" Margin="6" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                                            Background="Transparent">
                         <chart:SfCartesianChart.Legend>
                             <chart:ChartLegend Placement="Top" ToggleSeriesVisibility="True" CheckBoxVisibility="Visible" />
                         </chart:SfCartesianChart.Legend>
@@ -111,16 +195,68 @@
                             <chart:ChartTooltipBehavior />
                         </chart:SfCartesianChart.TooltipBehavior>
                         <chart:SfCartesianChart.XAxes>
-                            <chart:DateTimeAxis />
+                            <chart:DateTimeAxis LabelCreated="OnDateTimeAxisLabelCreated"
+                                                IntervalType="Seconds"
+                                                Interval="10"
+                                                Style="{StaticResource ChartAxisStyle}" />
                         </chart:SfCartesianChart.XAxes>
                         <chart:SfCartesianChart.YAxes>
-                            <chart:NumericalAxis Minimum="0" Maximum="100" />
+                            <chart:NumericalAxis Name="PercentAxis"
+                                                 Minimum="0"
+                                                 Maximum="100"
+                                                 Header="%"
+                                                 Style="{StaticResource ChartAxisStyle}" />
+                            <chart:NumericalAxis Name="NetworkAxis"
+                                                 Header="MB/s"
+                                                 OpposedPosition="True"
+                                                 Style="{StaticResource ChartAxisStyle}" />
                         </chart:SfCartesianChart.YAxes>
                         <chart:SfCartesianChart.Series>
-                            <chart:FastLineSeries Label="CPU" ItemsSource="{Binding History}" XBindingPath="CapturedAt" YBindingPath="CpuPercent" EnableTooltip="True" />
-                            <chart:FastLineSeries Label="内存" ItemsSource="{Binding History}" XBindingPath="CapturedAt" YBindingPath="MemoryPercent" EnableTooltip="True" />
-                            <chart:FastLineSeries Label="磁盘" ItemsSource="{Binding History}" XBindingPath="CapturedAt" YBindingPath="DiskPercent" EnableTooltip="True" />
-                            <chart:FastLineSeries Label="网络" ItemsSource="{Binding History}" XBindingPath="CapturedAt" YBindingPath="NetworkScaledPercent" EnableTooltip="True" />
+                            <chart:SplineAreaSeries Label="CPU"
+                                                    ItemsSource="{Binding History}"
+                                                    XBindingPath="CapturedAt"
+                                                    YBindingPath="CpuPercent"
+                                                    YAxisName="PercentAxis"
+                                                    Fill="{StaticResource CpuFillBrush}"
+                                                    Stroke="{StaticResource CpuColor}"
+                                                    StrokeWidth="2"
+                                                    EnableTooltip="True" />
+                            <chart:SplineAreaSeries Label="内存"
+                                                    ItemsSource="{Binding History}"
+                                                    XBindingPath="CapturedAt"
+                                                    YBindingPath="MemoryPercent"
+                                                    YAxisName="PercentAxis"
+                                                    Fill="{StaticResource MemoryFillBrush}"
+                                                    Stroke="{StaticResource MemoryColor}"
+                                                    StrokeWidth="2"
+                                                    EnableTooltip="True" />
+                            <chart:SplineAreaSeries Label="磁盘"
+                                                    ItemsSource="{Binding History}"
+                                                    XBindingPath="CapturedAt"
+                                                    YBindingPath="DiskPercent"
+                                                    YAxisName="PercentAxis"
+                                                    Fill="{StaticResource DiskFillBrush}"
+                                                    Stroke="{StaticResource DiskColor}"
+                                                    StrokeWidth="2"
+                                                    EnableTooltip="True" />
+                            <chart:SplineAreaSeries Label="下行"
+                                                    ItemsSource="{Binding History}"
+                                                    XBindingPath="CapturedAt"
+                                                    YBindingPath="NetworkReceiveMbps"
+                                                    YAxisName="NetworkAxis"
+                                                    Fill="{StaticResource NetworkReceiveFillBrush}"
+                                                    Stroke="{StaticResource NetworkColor}"
+                                                    StrokeWidth="2"
+                                                    EnableTooltip="True" />
+                            <chart:SplineAreaSeries Label="上行"
+                                                    ItemsSource="{Binding History}"
+                                                    XBindingPath="CapturedAt"
+                                                    YBindingPath="NetworkSendMbps"
+                                                    YAxisName="NetworkAxis"
+                                                    Fill="{StaticResource NetworkSendFillBrush}"
+                                                    Stroke="#00B0FF"
+                                                    StrokeWidth="2"
+                                                    EnableTooltip="True" />
                         </chart:SfCartesianChart.Series>
                     </chart:SfCartesianChart>
                 </Border>

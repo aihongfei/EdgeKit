@@ -17,6 +17,7 @@ public sealed class SystemResourceMonitorService
     {
         var nowUtc = DateTime.UtcNow;
         var cpu = ReadCpuUsage();
+        var cpuFrequency = ReadCpuFrequencyGHz();
         var memory = ReadMemory();
         var disk = ReadDisk();
         var network = ReadNetwork(nowUtc);
@@ -26,12 +27,14 @@ public sealed class SystemResourceMonitorService
         return new SystemResourceSnapshot(
             DateTime.Now,
             cpu,
+            cpuFrequency,
             memory.UsedPercent,
             memory.UsedText,
             memory.AvailableText,
-            disk.UsedPercent,
-            disk.UsedText,
-            disk.FreeText,
+            disk.Aggregate.UsedPercent,
+            disk.Aggregate.UsedText,
+            disk.Aggregate.FreeText,
+            disk.Details,
             network.ReceiveBytesPerSecond,
             network.SendBytesPerSecond,
             FormatBytes(network.ReceiveBytesPerSecond) + "/s",
@@ -67,6 +70,39 @@ public sealed class SystemResourceMonitorService
         return Math.Round(used, 1);
     }
 
+    private static double ReadCpuFrequencyGHz()
+    {
+        try
+        {
+            var processorCount = Environment.ProcessorCount;
+            if (processorCount <= 0)
+            {
+                return 0;
+            }
+
+            var buffer = new NativeMethods.PROCESSOR_POWER_INFORMATION[processorCount];
+            var size = Marshal.SizeOf<NativeMethods.PROCESSOR_POWER_INFORMATION>() * processorCount;
+            var result = NativeMethods.CallNtPowerInformation(
+                NativeMethods.ProcessorInformation,
+                nint.Zero,
+                0,
+                buffer,
+                size);
+
+            if (result != 0)
+            {
+                return 0;
+            }
+
+            var avgMhz = buffer.Average(p => p.CurrentMhz);
+            return Math.Round(avgMhz / 1000d, 2);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
     private static MemoryUsage ReadMemory()
     {
         var status = new NativeMethods.MEMORYSTATUSEX();
@@ -84,7 +120,7 @@ public sealed class SystemResourceMonitorService
         return new MemoryUsage(percent, FormatBytes(used), FormatBytes(available));
     }
 
-    private static DiskUsage ReadDisk()
+    private static (DiskUsage Aggregate, IReadOnlyList<DiskInfo> Details) ReadDisk()
     {
         try
         {
@@ -93,22 +129,40 @@ public sealed class SystemResourceMonitorService
                 .ToArray();
             if (drives.Length == 0)
             {
-                return new DiskUsage(0, "未知", "未知");
+                return (new DiskUsage(0, "未知", "未知"), Array.Empty<DiskInfo>());
             }
 
             var total = drives.Sum(d => d.TotalSize);
             var free = drives.Sum(d => d.AvailableFreeSpace);
             var used = Math.Max(0, total - free);
             var percent = Math.Round(used * 100d / total, 1);
-            return new DiskUsage(percent, FormatBytes(used), FormatBytes(free));
+            var aggregate = new DiskUsage(percent, FormatBytes(used), FormatBytes(free));
+
+            var details = drives
+                .Select(d =>
+                {
+                    var driveTotal = d.TotalSize;
+                    var driveFree = d.AvailableFreeSpace;
+                    var driveUsed = Math.Max(0, driveTotal - driveFree);
+                    var drivePercent = Math.Round(driveUsed * 100d / driveTotal, 1);
+                    return new DiskInfo(
+                        d.Name.TrimEnd('\\'),
+                        drivePercent,
+                        FormatBytes(driveUsed),
+                        FormatBytes(driveFree),
+                        FormatBytes(driveTotal));
+                })
+                .ToArray();
+
+            return (aggregate, details);
         }
         catch (IOException)
         {
-            return new DiskUsage(0, "未知", "未知");
+            return (new DiskUsage(0, "未知", "未知"), Array.Empty<DiskInfo>());
         }
         catch (UnauthorizedAccessException)
         {
-            return new DiskUsage(0, "未知", "未知");
+            return (new DiskUsage(0, "未知", "未知"), Array.Empty<DiskInfo>());
         }
     }
 
@@ -182,15 +236,24 @@ public sealed class SystemResourceMonitorService
     private readonly record struct NetworkUsage(long ReceiveBytesPerSecond, long SendBytesPerSecond);
 }
 
+public sealed record DiskInfo(
+    string Letter,
+    double UsedPercent,
+    string UsedText,
+    string FreeText,
+    string TotalText);
+
 public sealed record SystemResourceSnapshot(
     DateTime CapturedAt,
     double CpuPercent,
+    double CpuFrequencyGHz,
     double MemoryPercent,
     string MemoryUsedText,
     string MemoryAvailableText,
     double DiskPercent,
     string DiskUsedText,
     string DiskFreeText,
+    IReadOnlyList<DiskInfo> DiskDetails,
     long NetworkReceiveBytesPerSecond,
     long NetworkSendBytesPerSecond,
     string NetworkReceiveText,

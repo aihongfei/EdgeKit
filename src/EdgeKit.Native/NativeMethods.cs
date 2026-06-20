@@ -900,4 +900,27 @@ public static class NativeMethods
         uint crKey,
         ref BLENDFUNCTION pblend,
         uint dwFlags);
+
+    // ---- CPU 频率（powrprof.dll） ----
+
+    public const int ProcessorInformation = 11;
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct PROCESSOR_POWER_INFORMATION
+    {
+        public uint Number;
+        public uint MaxMhz;
+        public uint CurrentMhz;
+        public uint MhzLimit;
+        public uint MaxIdleState;
+        public uint CurrentIdleState;
+    }
+
+    [DllImport("powrprof.dll", SetLastError = true)]
+    public static extern uint CallNtPowerInformation(
+        int InformationLevel,
+        nint InputBuffer,
+        int InputBufferSize,
+        [Out] PROCESSOR_POWER_INFORMATION[] OutputBuffer,
+        int OutputBufferSize);
 }
