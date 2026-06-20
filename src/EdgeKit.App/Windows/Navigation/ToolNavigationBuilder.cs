@@ -27,7 +27,7 @@ internal static class ToolNavigationBuilder
 
         foreach (var group in shellViewModel.Groups)
         {
-            // 首页、剪贴板历史、命令面板、智能体、文本工具、图片工具、系统工具、设置：渲染为单个顶级可点击项。
+            // 首页、剪贴板历史、命令面板、智能体、文本工具、图片工具、待办任务、设置：渲染为单个顶级可点击项。
             if (ShouldRenderAsTopLevel(group.Category) && group.Tools.Count > 0)
             {
                 var tool = group.Tools[0];
@@ -78,5 +78,5 @@ internal static class ToolNavigationBuilder
     }
 
     private static bool ShouldRenderAsTopLevel(ToolCategory category)
-        => category is ToolCategory.Home or ToolCategory.Clipboard or ToolCategory.Command or ToolCategory.Agent or ToolCategory.Translation or ToolCategory.Text or ToolCategory.Image or ToolCategory.System or ToolCategory.Settings;
+        => category is ToolCategory.Home or ToolCategory.Clipboard or ToolCategory.Command or ToolCategory.Agent or ToolCategory.Translation or ToolCategory.Text or ToolCategory.Image or ToolCategory.Tasks or ToolCategory.Settings;
 }

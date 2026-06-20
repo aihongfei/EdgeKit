@@ -300,6 +300,20 @@ public sealed class SettingsService : ISettingsService
         set => SetField(ref _youdaoAppSecretPreview, value?.Trim() ?? string.Empty);
     }
 
+    private string _syncfusionLicenseKeyEncrypted = string.Empty;
+    public string SyncfusionLicenseKeyEncrypted
+    {
+        get => _syncfusionLicenseKeyEncrypted;
+        set => SetField(ref _syncfusionLicenseKeyEncrypted, value?.Trim() ?? string.Empty);
+    }
+
+    private string _syncfusionLicenseKeyPreview = string.Empty;
+    public string SyncfusionLicenseKeyPreview
+    {
+        get => _syncfusionLicenseKeyPreview;
+        set => SetField(ref _syncfusionLicenseKeyPreview, value?.Trim() ?? string.Empty);
+    }
+
     public void Load()
     {
         var values = _store.LoadAll();
@@ -350,6 +364,8 @@ public sealed class SettingsService : ISettingsService
         _youdaoAppKeyPreview = GetString(values, nameof(YoudaoAppKeyPreview), _youdaoAppKeyPreview);
         _youdaoAppSecretEncrypted = GetString(values, nameof(YoudaoAppSecretEncrypted), _youdaoAppSecretEncrypted);
         _youdaoAppSecretPreview = GetString(values, nameof(YoudaoAppSecretPreview), _youdaoAppSecretPreview);
+        _syncfusionLicenseKeyEncrypted = GetString(values, nameof(SyncfusionLicenseKeyEncrypted), _syncfusionLicenseKeyEncrypted);
+        _syncfusionLicenseKeyPreview = GetString(values, nameof(SyncfusionLicenseKeyPreview), _syncfusionLicenseKeyPreview);
 
         Changed?.Invoke(this, EventArgs.Empty);
     }
@@ -396,6 +412,8 @@ public sealed class SettingsService : ISettingsService
         _store.Set(nameof(YoudaoAppKeyPreview), _youdaoAppKeyPreview);
         _store.Set(nameof(YoudaoAppSecretEncrypted), _youdaoAppSecretEncrypted);
         _store.Set(nameof(YoudaoAppSecretPreview), _youdaoAppSecretPreview);
+        _store.Set(nameof(SyncfusionLicenseKeyEncrypted), _syncfusionLicenseKeyEncrypted);
+        _store.Set(nameof(SyncfusionLicenseKeyPreview), _syncfusionLicenseKeyPreview);
         _store.Save();
 
         Changed?.Invoke(this, EventArgs.Empty);

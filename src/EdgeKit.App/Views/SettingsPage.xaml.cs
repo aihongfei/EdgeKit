@@ -113,6 +113,10 @@ public sealed partial class SettingsPage : Page
         YoudaoAppSecretHintText.Text = string.IsNullOrWhiteSpace(_settings.YoudaoAppSecretPreview)
             ? "未配置有道 App Secret"
             : "已配置有道 App Secret " + _settings.YoudaoAppSecretPreview;
+        SyncfusionLicenseKeyBox.Password = string.Empty;
+        SyncfusionLicenseKeyHintText.Text = string.IsNullOrWhiteSpace(_settings.SyncfusionLicenseKeyPreview)
+            ? "未配置 Syncfusion License Key，启动时会显示试用提示"
+            : "已配置 Syncfusion License Key " + _settings.SyncfusionLicenseKeyPreview;
 
         _loading = false;
     }
@@ -597,5 +601,46 @@ public sealed partial class SettingsPage : Page
         _settings.YoudaoAppSecretPreview = SecretProtector.BuildPreview(secret);
         _settings.Save();
         YoudaoAppSecretHintText.Text = "已配置有道 App Secret " + _settings.YoudaoAppSecretPreview;
+    }
+
+    private void OnSaveSyncfusionLicenseKeyClick(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        SaveSyncfusionLicenseKey();
+    }
+
+    private void SaveSyncfusionLicenseKey()
+    {
+        if (_loading || _settings is null)
+        {
+            return;
+        }
+
+        var key = SyncfusionLicenseKeyBox.Password.Trim();
+        try
+        {
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                _settings.SyncfusionLicenseKeyEncrypted = string.Empty;
+                _settings.SyncfusionLicenseKeyPreview = string.Empty;
+                _settings.Save();
+                SyncfusionLicenseKeyBox.Password = string.Empty;
+                SyncfusionLicenseKeyHintText.Text = "未配置 Syncfusion License Key，启动时会显示试用提示";
+                return;
+            }
+
+            var encrypted = SecretProtector.Protect(key);
+            var preview = SecretProtector.BuildPreview(key);
+            Syncfusion.Licensing.SyncfusionLicenseProvider.RegisterLicense(key);
+
+            _settings.SyncfusionLicenseKeyEncrypted = encrypted;
+            _settings.SyncfusionLicenseKeyPreview = preview;
+            _settings.Save();
+            SyncfusionLicenseKeyBox.Password = string.Empty;
+            SyncfusionLicenseKeyHintText.Text = "已配置 Syncfusion License Key " + preview;
+        }
+        catch (Exception ex)
+        {
+            SyncfusionLicenseKeyHintText.Text = "License Key 保存失败：" + ex.Message;
+        }
     }
 }

@@ -86,6 +86,14 @@ public sealed partial class DrawerWindow
         {
             ContentFrame.Navigate(typeof(AgentChatPage), new AgentChatPageParameter(_agentService));
         }
+        else if (toolId == "task.board")
+        {
+            ContentFrame.Navigate(typeof(TaskBoardPage), new TaskBoardPageParameter(_taskBoardViewModel));
+        }
+        else if (toolId == "system.dashboard")
+        {
+            ContentFrame.Navigate(typeof(SystemDashboardPage), new SystemDashboardPageParameter(_systemDashboardViewModel));
+        }
         else if (toolId == "text.translate")
         {
             ContentFrame.Navigate(typeof(TranslateToolsPage), new TranslateToolsPageParameter(_agentService, _youdaoService, _hwnd));
@@ -140,7 +148,6 @@ public sealed partial class DrawerWindow
 
     private static string GetVisibleToolId(string toolId)
         => toolId is "text.encode" or "json.format" or "json.tree" ? "text.tools"
-            : toolId == "system.filelock" ? "system.tools"
             : toolId;
 
     private void OnPaneOpening(NavigationView sender, object args)

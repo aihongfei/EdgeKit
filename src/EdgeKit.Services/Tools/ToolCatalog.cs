@@ -18,6 +18,9 @@ public sealed class ToolCatalog : IToolCatalog
         // 剪贴板
         new("clipboard.history", "剪贴板历史", "\uE8C8", ToolCategory.Clipboard, 0, "查看与搜索剪贴板历史记录"),
 
+        // 待办任务
+        new("task.board", "待办任务", "\uE7C3", ToolCategory.Tasks, 0, "按状态筛选，按时间分组管理任务"),
+
         // 命令面板
         new("command.palette", "命令面板", "\uE756", ToolCategory.Command, 0, "快速搜索并执行系统命令"),
 
@@ -38,7 +41,7 @@ public sealed class ToolCatalog : IToolCatalog
 
         // 系统工具
         new("system.tools", "系统工具", "\uE770", ToolCategory.System, 0, "网络、端口、Hosts、环境变量、窗口管理"),
-        new("system.filelock", "文件锁定检测", "\uE8A5", ToolCategory.System, 1, "检测文件或文件夹占用进程并处理锁定"),
+        new("system.dashboard", "资源仪表盘", "\uE9D2", ToolCategory.System, 1, "CPU、内存、磁盘与网络实时概览"),
 
         // 设置
         new("settings.center", "设置中心", "\uE713", ToolCategory.Settings, 0, "常规、抽屉、快捷键、隐私等设置"),

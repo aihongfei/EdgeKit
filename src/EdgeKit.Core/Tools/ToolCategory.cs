@@ -36,6 +36,12 @@ public enum ToolCategory
     /// <summary>图片工具。</summary>
     Image,
 
+    /// <summary>待办任务。</summary>
+    Tasks,
+
+    /// <summary>资源仪表盘。</summary>
+    Dashboard,
+
     /// <summary>系统工具。</summary>
     System,
 
@@ -61,6 +67,8 @@ public static class ToolCategoryInfo
         ToolCategory.Json => "JSON 工具",
         ToolCategory.Developer => "开发者工具",
         ToolCategory.Image => "图片工具",
+        ToolCategory.Tasks => "待办任务",
+        ToolCategory.Dashboard => "仪表盘",
         ToolCategory.System => "系统工具",
         ToolCategory.Settings => "设置",
         _ => category.ToString()
@@ -79,6 +87,8 @@ public static class ToolCategoryInfo
         ToolCategory.Json => "\uE943",
         ToolCategory.Developer => "\uEC7A",
         ToolCategory.Image => "\uEB9F",
+        ToolCategory.Tasks => "\uE7C3",
+        ToolCategory.Dashboard => "\uE9D2",
         ToolCategory.System => "\uE770",
         ToolCategory.Settings => "\uE713",
         _ => "\uE700"

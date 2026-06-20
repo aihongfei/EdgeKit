@@ -66,6 +66,8 @@ public sealed partial class DrawerWindow : Window
     private readonly TextProcessingService _textTools;
     private readonly YoudaoTranslationService _youdaoService;
     private readonly IAgentService _agentService;
+    private readonly TaskBoardViewModel _taskBoardViewModel;
+    private readonly SystemDashboardViewModel _systemDashboardViewModel;
 
     // 抽屉基础宽度（收缩态，物理像素）下限。
     private const int MinDrawerWidth = 360;
@@ -147,7 +149,9 @@ public sealed partial class DrawerWindow : Window
         ImageProcessingService imageTools,
         TextProcessingService textTools,
         YoudaoTranslationService youdaoService,
-        IAgentService agentService)
+        IAgentService agentService,
+        TaskBoardViewModel taskBoardViewModel,
+        SystemDashboardViewModel systemDashboardViewModel)
     {
         _settings = settings;
         _shellViewModel = shellViewModel;
@@ -172,6 +176,8 @@ public sealed partial class DrawerWindow : Window
         _textTools = textTools;
         _youdaoService = youdaoService;
         _agentService = agentService;
+        _taskBoardViewModel = taskBoardViewModel;
+        _systemDashboardViewModel = systemDashboardViewModel;
         InitializeComponent();
 
         // 用全局快捷键设置初始化搜索框提示。

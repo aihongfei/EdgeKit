@@ -17,6 +17,7 @@ internal static class AgentToolSchemas
         ["file_list"] = ["path"],
         ["file_search"] = ["path", "query"],
         ["file_write"] = ["path", "content"],
+        ["create_task"] = ["title"],
         ["file_patch"] = ["path", "oldText", "newText"],
         ["file_delete_recycle"] = ["path"],
         ["shell_run"] = ["command"],
@@ -46,6 +47,19 @@ internal static class AgentToolSchemas
         ["file_list"] = [Text("path", PathDescription("directory path to list")), Text("pattern", "File search pattern, for example *.txt."), Boolean("recursive", "Whether to include subdirectories."), Integer("limit", "Maximum number of entries.")],
         ["file_search"] = [Text("path", PathDescription("directory path to search")), Text("query", "File name or text query."), Text("pattern", "File search pattern, for example *.txt."), Boolean("recursive", "Whether to include subdirectories."), Integer("limit", "Maximum number of matches.")],
         ["file_write"] = [Text("path", PathDescription("target file path")), Text("content", "Text content to write."), Boolean("append", "Append instead of overwrite.")],
+        ["create_task"] =
+        [
+            Text("title", "任务标题，必填。"),
+            Text("description", "任务描述，可选。"),
+            Text("priority", "优先级：Low(低)、Normal(普通)、High(高)，默认为 Normal。"),
+            Text("dueDate", "截止日期与时间，可选。支持格式如 2026-06-20、2026-06-20 15:00、ISO 8601。")
+        ],
+        ["query_tasks"] =
+        [
+            Text("status", "状态过滤：Todo(待办)、InProgress(进行中)、Done(已完成)、All(全部)，默认为 All。"),
+            Integer("limit", "返回最大任务数量，默认 50。"),
+            Boolean("includeCompleted", "是否包含已完成任务，默认 false。当 status 为 All 时该参数生效。")
+        ],
         ["file_patch"] = [Text("path", PathDescription("target text file path")), Text("oldText", "Exact text to replace."), Text("newText", "Replacement text.")],
         ["file_delete_recycle"] = [Text("path", PathDescription("file or directory path to move to recycle bin"))],
         ["shell_run"] = [Text("command", "PowerShell command to execute."), Text("workingDirectory", "Optional working directory."), Integer("timeoutSeconds", "Timeout in seconds."), Boolean("runAsAdministrator", "Run PowerShell with administrator privileges. Use only when explicitly needed; it requires approval.")],

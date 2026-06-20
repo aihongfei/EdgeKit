@@ -36,6 +36,8 @@ public sealed class AgentToolRegistry : IAgentToolRegistry
         new("file_list", "列出文件", "列出指定目录下的文件和文件夹。参数: path, 可选 pattern, recursive, limit。", AgentToolRisk.ReadOnly, ChatAndWindows, false),
         new("file_search", "搜索文件内容", "在指定目录搜索文件名或文本内容。参数: path, query, 可选 pattern, recursive, limit。", AgentToolRisk.ReadOnly, ChatAndWindows, false),
         new("file_write", "写入文件", "创建、覆盖或追加写入文本文件；遇到权限不足时 EdgeKit 会统一请求管理员授权。参数: path, content, 可选 append。", AgentToolRisk.UserWrite, ChatAndWindows, true),
+        new("create_task", "创建任务", "在待办任务板中创建一张任务卡片。参数: title, 可选 description, priority(Low/Normal/High), dueDate(如 2026-06-20 15:00)。", AgentToolRisk.UserWrite, ChatAndWindows, true),
+        new("query_tasks", "查询任务", "查询待办任务板中的任务记录。参数: 可选 status(Todo/InProgress/Done/All), limit, includeCompleted。", AgentToolRisk.ReadOnly, ChatAndWindows, false),
         new("file_patch", "替换文件文本", "在文本文件中执行精确字符串替换；遇到权限不足时 EdgeKit 会统一请求管理员授权。参数: path, oldText, newText。", AgentToolRisk.UserWrite, ChatAndWindows, true),
         new("file_delete_recycle", "文件删除到回收站", "将指定文件或文件夹删除到回收站。参数: path。", AgentToolRisk.Destructive, ChatAndWindows, true),
         new("shell_run", "运行 Shell 命令", "在 PowerShell 中执行命令并返回输出。参数: command, 可选 workingDirectory, timeoutSeconds, runAsAdministrator。管理员运行必须显式请求并确认。", AgentToolRisk.SystemWrite, ChatAndWindows, true),

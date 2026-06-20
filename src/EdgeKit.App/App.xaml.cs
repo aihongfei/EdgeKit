@@ -1,29 +1,34 @@
 ﻿using System;
 using EdgeKit.App.Commands;
 using EdgeKit.App.Interaction;
+using EdgeKit.App.Notifications;
 using EdgeKit.App.ViewModels;
 using EdgeKit.App.Windows;
+using EdgeKit.Core.Agent;
 using EdgeKit.Core.Commands;
 using EdgeKit.Core.QuickLaunch;
 using EdgeKit.Core.Recent;
 using EdgeKit.Core.Services;
 using EdgeKit.Core.Settings;
+using EdgeKit.Core.Tasks;
 using EdgeKit.Core.Tools;
-using EdgeKit.Core.Agent;
 using EdgeKit.Data.Agent;
 using EdgeKit.Data.Commands;
 using EdgeKit.Data.QuickLaunch;
 using EdgeKit.Data.Recent;
 using EdgeKit.Data.Settings;
+using EdgeKit.Data.Tasks;
 using EdgeKit.Services.Agent;
 using EdgeKit.Services.Settings;
 using EdgeKit.Services.Diagnostics;
 using EdgeKit.Services.Images;
 using EdgeKit.Services.SystemOperations;
+using EdgeKit.Services.Tasks;
 using EdgeKit.Services.Text;
 using EdgeKit.Services.Tools;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
+using Microsoft.Windows.AppNotifications;
 using Serilog;
 
 namespace EdgeKit.App;
@@ -36,6 +41,7 @@ public partial class App : Application
     private Window? _drawerWindow;
     private TrayIconService? _trayIcon;
     private GlobalHotkeyService? _globalHotkey;
+    private TaskReminderService? _taskReminderService;
     private bool _isExiting;
 
     /// <summary>全局服务提供者。</summary>
@@ -51,6 +57,7 @@ public partial class App : Application
 
         ConfigureLogging();
         Services = ConfigureServices();
+        RegisterSyncfusionLicense();
 
         UnhandledException += OnUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += OnDomainUnhandledException;
@@ -59,6 +66,16 @@ public partial class App : Application
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
         Log.Information("EdgeKit starting");
+
+        try
+        {
+            NotificationAumidRegistration.EnsureRegistered();
+            AppNotificationManager.Default.Register();
+        }
+        catch
+        {
+            // 非打包应用通知注册可能失败，不影响主流程。
+        }
 
         var internalCommandExitCode = TryRunInternalCommand();
         if (internalCommandExitCode is not null)
@@ -95,7 +112,11 @@ public partial class App : Application
         var textTools = Services.GetRequiredService<TextProcessingService>();
         var youdaoService = Services.GetRequiredService<YoudaoTranslationService>();
         var agentService = Services.GetRequiredService<IAgentService>();
-        var drawerWindow = new DrawerWindow(settings, shellViewModel, recentItems, quickLaunchItems, quickLaunchActions, homeViewModel, windowMonitor, searchCoordinator, appIndex, commandRegistry, commandExecutor, customCommands, clipboardService, clipboardViewModel, systemDiagnostics, hostsFileService, environmentVariables, windowManagement, fileLocks, imageTools, textTools, youdaoService, agentService);
+        var taskBoardViewModel = Services.GetRequiredService<TaskBoardViewModel>();
+        var systemDashboardViewModel = Services.GetRequiredService<SystemDashboardViewModel>();
+        _taskReminderService = Services.GetRequiredService<TaskReminderService>();
+        _taskReminderService.Start();
+        var drawerWindow = new DrawerWindow(settings, shellViewModel, recentItems, quickLaunchItems, quickLaunchActions, homeViewModel, windowMonitor, searchCoordinator, appIndex, commandRegistry, commandExecutor, customCommands, clipboardService, clipboardViewModel, systemDiagnostics, hostsFileService, environmentVariables, windowManagement, fileLocks, imageTools, textTools, youdaoService, agentService, taskBoardViewModel, systemDashboardViewModel);
         drawerWindow.Closed += OnDrawerWindowClosed;
         _drawerWindow = drawerWindow;
 
@@ -121,6 +142,8 @@ public partial class App : Application
         _globalHotkey?.Dispose();
         _globalHotkey = null;
         GlobalHotkey = null;
+        _taskReminderService?.Dispose();
+        _taskReminderService = null;
         _trayIcon?.Dispose();
         _trayIcon = null;
         _drawerWindow?.Close();
@@ -134,11 +157,34 @@ public partial class App : Application
         _globalHotkey?.Dispose();
         _globalHotkey = null;
         GlobalHotkey = null;
+        _taskReminderService?.Dispose();
+        _taskReminderService = null;
         Log.CloseAndFlush();
     }
 
     private static string GetTrayIconPath()
         => System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico");
+
+    private static void RegisterSyncfusionLicense()
+    {
+        try
+        {
+            var settings = Services.GetRequiredService<ISettingsService>();
+            settings.Load();
+            var key = SecretProtector.Unprotect(settings.SyncfusionLicenseKeyEncrypted).Trim();
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                return;
+            }
+
+            Syncfusion.Licensing.SyncfusionLicenseProvider.RegisterLicense(key);
+            Log.Information("Syncfusion license 已注册。");
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "注册 Syncfusion license 失败。");
+        }
+    }
 
     private static void ConfigureLogging()
     {
@@ -170,6 +216,7 @@ public partial class App : Application
         services.AddSingleton<IQuickLaunchRepository>(_ => new SqliteQuickLaunchRepository(dbPath));
         services.AddSingleton<ICustomCommandRepository>(_ => new SqliteCustomCommandRepository(dbPath));
         services.AddSingleton<IAgentRepository>(_ => new SqliteAgentRepository(dbPath));
+        services.AddSingleton<ITaskBoardRepository>(_ => new SqliteTaskBoardRepository(dbPath));
 
         var clipboardImageDir = System.IO.Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -182,6 +229,7 @@ public partial class App : Application
             sp.GetRequiredService<EdgeKit.Core.Clipboard.IClipboardClassifier>(),
             clipboardImageDir));
         services.AddSingleton<ClipboardContentWriter>();
+        services.AddSingleton<QuickLaunchActionService>();
         services.AddSingleton<IElevatedOperationHandler, FileWriteElevatedOperationHandler>();
         services.AddSingleton<IElevatedOperationHandler, FilePatchElevatedOperationHandler>();
         services.AddSingleton<IElevatedOperationHandler, FileDeleteRecycleElevatedOperationHandler>();
@@ -192,8 +240,9 @@ public partial class App : Application
         services.AddSingleton<IElevatedOperationHandler, ProcessKillElevatedOperationHandler>();
         services.AddSingleton<IElevatedOperationHandler, PowerShellElevatedOperationHandler>();
         services.AddSingleton<ElevatedOperationService>();
-        services.AddSingleton<QuickLaunchActionService>();
         services.AddSingleton<SystemDiagnosticsService>();
+        services.AddSingleton<SystemResourceMonitorService>();
+        services.AddSingleton<TaskReminderService>();
         services.AddSingleton<HostsFileService>();
         services.AddSingleton<EnvironmentVariableService>();
         services.AddSingleton<WindowManagementService>();
@@ -224,6 +273,8 @@ public partial class App : Application
         services.AddTransient<HomeViewModel>();
         services.AddTransient<DrawerShellViewModel>();
         services.AddTransient<ClipboardHistoryViewModel>();
+        services.AddTransient<TaskBoardViewModel>();
+        services.AddTransient<SystemDashboardViewModel>();
 
         return services.BuildServiceProvider();
     }

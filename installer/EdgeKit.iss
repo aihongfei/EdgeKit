@@ -62,6 +62,7 @@ Type: filesandordirs; Name: "{app}\ca-Es-VALENCIA"
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}\{#MyInstallSubdir}"
 Type: filesandordirs; Name: "{app}"
+Type: files; Name: "{userappdata}\Microsoft\Windows\Start Menu\Programs\EdgeKit.lnk"
 
 [Files]
 Source: "{#MySourceDir}\*"; DestDir: "{app}\{#MyInstallSubdir}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.pdb,??-??\*,???-??\*,??-????-??\*,ca-Es-VALENCIA\*"
@@ -70,9 +71,9 @@ Source: "{#MySourceDir}\zh-CN\*"; DestDir: "{app}\{#MyInstallSubdir}\zh-CN"; Fla
 Source: "{#MySourceDir}\zh-TW\*"; DestDir: "{app}\{#MyInstallSubdir}\zh-TW"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 
 [Icons]
-Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyInstallSubdir}\{#MyAppExeName}"; WorkingDir: "{app}\{#MyInstallSubdir}"
+Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyInstallSubdir}\{#MyAppExeName}"; WorkingDir: "{app}\{#MyInstallSubdir}"; AppUserModelID: "EdgeKit"
 Name: "{group}\卸载 {#MyAppName}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyInstallSubdir}\{#MyAppExeName}"; WorkingDir: "{app}\{#MyInstallSubdir}"; Tasks: desktopicon
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyInstallSubdir}\{#MyAppExeName}"; WorkingDir: "{app}\{#MyInstallSubdir}"; Tasks: desktopicon; AppUserModelID: "EdgeKit"
 
 [Run]
 Filename: "{app}\{#MyInstallSubdir}\{#MyAppExeName}"; Description: "启动 {#MyAppName}"; Flags: nowait postinstall skipifsilent

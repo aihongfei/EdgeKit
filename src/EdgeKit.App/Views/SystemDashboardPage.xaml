@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="EdgeKit.App.Views.SystemDashboardPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:chart="using:Syncfusion.UI.Xaml.Charts"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    Background="Transparent"
+    RequestedTheme="Dark"
+    mc:Ignorable="d">
+
+    <Page.Resources>
+        <Style x:Key="PanelBorderStyle" TargetType="Border">
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Padding" Value="12" />
+            <Setter Property="Background" Value="{ThemeResource EdgePanelBrush}" />
+            <Setter Property="BorderBrush" Value="{ThemeResource EdgeLineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+
+        <Style x:Key="ToolButtonStyle" TargetType="Button">
+            <Setter Property="MinHeight" Value="34" />
+            <Setter Property="Padding" Value="10,5" />
+            <Setter Property="Background" Value="{ThemeResource EdgeControlBrush}" />
+            <Setter Property="BorderBrush" Value="{ThemeResource EdgeLineBrush}" />
+        </Style>
+    </Page.Resources>
+
+    <Grid Padding="24,16,24,24" RowSpacing="14">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Spacing="4">
+                <TextBlock Text="系统资源仪表盘" FontSize="22" FontWeight="SemiBold"
+                           Foreground="{ThemeResource EdgeTextBrush}" />
+                <TextBlock Text="CPU、内存、磁盘和网络实时采样，页面离开后停止刷新"
+                           FontSize="12" Foreground="{ThemeResource EdgeMutedBrush}" />
+            </StackPanel>
+            <Button Grid.Column="1" x:Name="SamplingButton" Click="OnSamplingClick" Style="{StaticResource ToolButtonStyle}">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <FontIcon FontSize="13" Glyph="&#xE768;" />
+                    <TextBlock x:Name="SamplingButtonText" Text="暂停" />
+                </StackPanel>
+            </Button>
+        </Grid>
+
+        <Grid Grid.Row="1" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Style="{StaticResource PanelBorderStyle}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="CPU" FontSize="13" Foreground="{ThemeResource EdgeMutedBrush}" />
+                    <TextBlock x:Name="CpuText" Text="--%" FontSize="24" FontWeight="SemiBold" Foreground="{ThemeResource EdgeTextBrush}" />
+                    <ProgressBar x:Name="CpuBar" Minimum="0" Maximum="100" />
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="1" Style="{StaticResource PanelBorderStyle}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="内存" FontSize="13" Foreground="{ThemeResource EdgeMutedBrush}" />
+                    <TextBlock x:Name="MemoryText" Text="--%" FontSize="24" FontWeight="SemiBold" Foreground="{ThemeResource EdgeTextBrush}" />
+                    <TextBlock x:Name="MemoryDetailText" FontSize="11" Foreground="{ThemeResource EdgeMutedBrush}" />
+                    <ProgressBar x:Name="MemoryBar" Minimum="0" Maximum="100" />
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="2" Style="{StaticResource PanelBorderStyle}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="磁盘" FontSize="13" Foreground="{ThemeResource EdgeMutedBrush}" />
+                    <TextBlock x:Name="DiskText" Text="--%" FontSize="24" FontWeight="SemiBold" Foreground="{ThemeResource EdgeTextBrush}" />
+                    <TextBlock x:Name="DiskDetailText" FontSize="11" Foreground="{ThemeResource EdgeMutedBrush}" />
+                    <ProgressBar x:Name="DiskBar" Minimum="0" Maximum="100" />
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="3" Style="{StaticResource PanelBorderStyle}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="网络" FontSize="13" Foreground="{ThemeResource EdgeMutedBrush}" />
+                    <TextBlock x:Name="NetworkText" Text="--" FontSize="18" FontWeight="SemiBold" Foreground="{ThemeResource EdgeTextBrush}" />
+                    <TextBlock x:Name="NetworkDetailText" FontSize="11" Foreground="{ThemeResource EdgeMutedBrush}" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <Border Grid.Row="2" Style="{StaticResource PanelBorderStyle}">
+            <Grid RowSpacing="10">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <TextBlock Text="最近 60 秒趋势" FontSize="15" FontWeight="SemiBold" Foreground="{ThemeResource EdgeTextBrush}" />
+                <Border Grid.Row="1" Background="{ThemeResource EdgeControlBrush}" CornerRadius="8"
+                        BorderBrush="{ThemeResource EdgeLineBrush}" BorderThickness="1">
+                    <chart:SfCartesianChart x:Name="ResourceChart" Margin="8" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+                        <chart:SfCartesianChart.Legend>
+                            <chart:ChartLegend Placement="Top" ToggleSeriesVisibility="True" CheckBoxVisibility="Visible" />
+                        </chart:SfCartesianChart.Legend>
+                        <chart:SfCartesianChart.TooltipBehavior>
+                            <chart:ChartTooltipBehavior />
+                        </chart:SfCartesianChart.TooltipBehavior>
+                        <chart:SfCartesianChart.XAxes>
+                            <chart:DateTimeAxis />
+                        </chart:SfCartesianChart.XAxes>
+                        <chart:SfCartesianChart.YAxes>
+                            <chart:NumericalAxis Minimum="0" Maximum="100" />
+                        </chart:SfCartesianChart.YAxes>
+                        <chart:SfCartesianChart.Series>
+                            <chart:FastLineSeries Label="CPU" ItemsSource="{Binding History}" XBindingPath="CapturedAt" YBindingPath="CpuPercent" EnableTooltip="True" />
+                            <chart:FastLineSeries Label="内存" ItemsSource="{Binding History}" XBindingPath="CapturedAt" YBindingPath="MemoryPercent" EnableTooltip="True" />
+                            <chart:FastLineSeries Label="磁盘" ItemsSource="{Binding History}" XBindingPath="CapturedAt" YBindingPath="DiskPercent" EnableTooltip="True" />
+                            <chart:FastLineSeries Label="网络" ItemsSource="{Binding History}" XBindingPath="CapturedAt" YBindingPath="NetworkScaledPercent" EnableTooltip="True" />
+                        </chart:SfCartesianChart.Series>
+                    </chart:SfCartesianChart>
+                </Border>
+            </Grid>
+        </Border>
+
+        <TextBlock x:Name="StatusText" Grid.Row="3" FontSize="12" Foreground="{ThemeResource EdgeMutedBrush}" />
+    </Grid>
+</Page>

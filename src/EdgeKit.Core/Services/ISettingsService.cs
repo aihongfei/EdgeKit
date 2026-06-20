@@ -121,6 +121,10 @@ public interface ISettingsService
 
     string YoudaoAppSecretPreview { get; set; }
 
+    string SyncfusionLicenseKeyEncrypted { get; set; }
+
+    string SyncfusionLicenseKeyPreview { get; set; }
+
     /// <summary>加载持久化的设置。</summary>
     void Load();
 

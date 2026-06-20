@@ -307,6 +307,31 @@
                            ValueChanged="OnQuickLaunchVisibleRowsChanged" />
             </Grid>
 
+            <!-- 组件授权 -->
+            <TextBlock Text="组件授权" FontSize="14" FontWeight="SemiBold"
+                       Foreground="{ThemeResource EdgeMutedBrush}" Margin="0,4,0,0" />
+
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                    <TextBlock Text="Syncfusion License Key" Foreground="{ThemeResource EdgeTextBrush}" />
+                    <TextBlock x:Name="SyncfusionLicenseKeyHintText"
+                               FontSize="12" Foreground="{ThemeResource EdgeMutedBrush}"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <PasswordBox x:Name="SyncfusionLicenseKeyBox"
+                                 Width="260" Height="36" VerticalAlignment="Center" />
+                    <Button x:Name="SaveSyncfusionLicenseKeyButton"
+                            Content="保存"
+                            Height="36"
+                            Click="OnSaveSyncfusionLicenseKeyClick" />
+                </StackPanel>
+            </Grid>
+
             <!-- 翻译 -->
             <TextBlock Text="翻译" FontSize="14" FontWeight="SemiBold"
                        Foreground="{ThemeResource EdgeMutedBrush}" Margin="0,4,0,0" />

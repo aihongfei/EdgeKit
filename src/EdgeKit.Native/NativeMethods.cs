@@ -485,6 +485,10 @@ public static class NativeMethods
         [In] ref Guid riid,
         [MarshalAs(UnmanagedType.Interface)] out object ppv);
 
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    public static extern int SetCurrentProcessExplicitAppUserModelID(
+        [MarshalAs(UnmanagedType.LPWStr)] string appId);
+
     [DllImport("gdi32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool DeleteObject(nint hObject);
@@ -560,12 +564,43 @@ public static class NativeMethods
     public static readonly Guid IID_IShellItem =
         new("43826d1e-e718-42ee-bc55-a1e261c37bfe");
 
+    public static readonly Guid IID_IShellItem2 =
+        new("7e9fb0d3-919f-4307-ab2e-9b1860310c93");
+
+    [ComImport]
+    [Guid("7e9fb0d3-919f-4307-ab2e-9b1860310c93")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    public interface IShellItem2
+    {
+        void BindToHandler(
+            nint pbc,
+            [MarshalAs(UnmanagedType.LPStruct)] Guid bhid,
+            [MarshalAs(UnmanagedType.LPStruct)] Guid riid,
+            [MarshalAs(UnmanagedType.Interface)] out object ppv);
+
+        void GetParent(out IShellItem ppsi);
+
+        void GetDisplayName(uint sigdnName, [MarshalAs(UnmanagedType.LPWStr)] out string ppszName);
+
+        void GetAttributes(uint sfgaoMask, out uint psfgaoAttribs);
+
+        void Compare(IShellItem psi, uint hint, out int piOrder);
+
+        [PreserveSig]
+        int GetPropertyStore(
+            uint flags,
+            [In] ref Guid riid,
+            out nint ppv);
+    }
+
     // ---- ShellLink 快捷方式读取（只读 .lnk 目标与 AUMID） ----
 
     public const int MAX_PATH = 260;
     public const uint SLGP_RAWPATH = 0x0004;
     public const uint STGM_READ = 0x00000000;
     public const uint GPS_DEFAULT = 0x00000000;
+    public const uint GPS_READWRITE = 0x00000002;
+    public const ushort VT_LPWSTR = 31;
 
     public static readonly Guid BHID_PropertyStore =
         new("0384e1a4-1523-439c-a4c8-ab911052f586");
@@ -573,6 +608,19 @@ public static class NativeMethods
     public static readonly PropertyKey PKEY_AppUserModel_ID = new(
         new Guid("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3"),
         5);
+
+    public static readonly Guid IID_IPropertyStore =
+        new("00000138-0000-0000-C000-000000000046");
+
+    public const int S_OK = 0;
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    public static extern int SHGetPropertyStoreFromParsingName(
+        [MarshalAs(UnmanagedType.LPWStr)] string pszPath,
+        nint pbc,
+        uint flags,
+        [In] ref Guid riid,
+        out nint ppv);
 
     [ComImport]
     [Guid("00021401-0000-0000-C000-000000000046")]

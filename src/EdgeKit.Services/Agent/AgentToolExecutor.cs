@@ -7,6 +7,7 @@ using System.Text.RegularExpressions;
 using EdgeKit.Core.Agent;
 using EdgeKit.Core.Clipboard;
 using EdgeKit.Core.Services;
+using EdgeKit.Core.Tasks;
 using EdgeKit.Services.Diagnostics;
 using EdgeKit.Services.Settings;
 using EdgeKit.Services.SystemOperations;
@@ -40,6 +41,7 @@ public sealed class AgentToolExecutor
     private readonly ISettingsService _settings;
     private readonly McpToolService _mcpTools;
     private readonly ElevatedOperationService _elevation;
+    private readonly ITaskBoardRepository _taskBoardRepository;
 
     public AgentToolExecutor(
         AgentToolRegistry registry,
@@ -52,7 +54,8 @@ public sealed class AgentToolExecutor
         HttpClient http,
         ISettingsService settings,
         McpToolService mcpTools,
-        ElevatedOperationService elevation)
+        ElevatedOperationService elevation,
+        ITaskBoardRepository taskBoardRepository)
     {
         _registry = registry;
         _diagnostics = diagnostics;
@@ -65,6 +68,7 @@ public sealed class AgentToolExecutor
         _settings = settings;
         _mcpTools = mcpTools;
         _elevation = elevation;
+        _taskBoardRepository = taskBoardRepository;
     }
 
     public AgentToolDescriptor? Find(string toolId) => _registry.Find(toolId);
@@ -120,6 +124,8 @@ public sealed class AgentToolExecutor
                 "file_list" => ListFiles(arguments),
                 "file_search" => await SearchFilesAsync(arguments, cancellationToken).ConfigureAwait(false),
                 "file_write" => await WriteFileAsync(arguments, cancellationToken).ConfigureAwait(false),
+                "create_task" => await CreateTaskAsync(arguments, cancellationToken).ConfigureAwait(false),
+                "query_tasks" => await BuildTaskListAsync(arguments, cancellationToken).ConfigureAwait(false),
                 "file_patch" => await PatchFileAsync(arguments, cancellationToken).ConfigureAwait(false),
                 "file_delete_recycle" => FormatActionResult(await DeleteFileToRecycleAsync(arguments, cancellationToken).ConfigureAwait(false)),
                 "shell_run" => await RunShellAsync(arguments, cancellationToken).ConfigureAwait(false),
@@ -213,6 +219,164 @@ public sealed class AgentToolExecutor
 
         var items = _environment.AnalyzePath(value);
         return string.Join(Environment.NewLine, items.Select(i => $"{i.Index}. {i.DisplayValue} - {i.IssueText}"));
+    }
+
+    private async Task<string> CreateTaskAsync(JsonElement arguments, CancellationToken cancellationToken)
+    {
+        var title = GetString(arguments, "title").Trim();
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            throw new ArgumentException("任务标题不能为空。");
+        }
+
+        var description = GetOptionalString(arguments, "description").Trim();
+        var priority = ParseTaskPriority(GetOptionalString(arguments, "priority"));
+        var dueLocal = ParseTaskDueDate(GetOptionalString(arguments, "dueDate"));
+
+        var card = new TaskCard(
+            Id: 0,
+            Title: title,
+            Description: description,
+            Status: TaskCardStatus.Todo,
+            Priority: priority,
+            DueLocal: dueLocal,
+            SortOrder: 0,
+            CreatedUtc: default,
+            UpdatedUtc: default,
+            CompletedUtc: null);
+
+        var id = await Task.Run(() => _taskBoardRepository.Add(card), cancellationToken).ConfigureAwait(false);
+        return $"已创建任务 #{id}: {title}";
+    }
+
+    private async Task<string> BuildTaskListAsync(JsonElement arguments, CancellationToken cancellationToken)
+    {
+        var statusFilter = GetOptionalString(arguments, "status");
+        var limit = Math.Clamp(GetOptionalInt(arguments, "limit") ?? 50, 1, 200);
+        var includeCompleted = GetOptionalBool(arguments, "includeCompleted") ?? false;
+
+        var all = await Task.Run(_taskBoardRepository.GetAll, cancellationToken).ConfigureAwait(false);
+
+        var filtered = all.AsEnumerable();
+        if (!string.IsNullOrWhiteSpace(statusFilter)
+            && !statusFilter.Equals("All", StringComparison.OrdinalIgnoreCase)
+            && !statusFilter.Equals("全部", StringComparison.OrdinalIgnoreCase))
+        {
+            var targetStatus = ParseTaskStatus(statusFilter);
+            filtered = filtered.Where(t => t.Status == targetStatus);
+        }
+        else if (!includeCompleted)
+        {
+            filtered = filtered.Where(t => t.Status != TaskCardStatus.Done);
+        }
+
+        var tasks = filtered
+            .OrderBy(t => t.Status)
+            .ThenBy(t => t.DueLocal ?? DateTime.MaxValue)
+            .ThenBy(t => t.Id)
+            .Take(limit)
+            .ToList();
+
+        if (tasks.Count == 0)
+        {
+            return "当前没有符合条件的任务。";
+        }
+
+        var lines = new List<string> { $"共 {tasks.Count} 条任务：" };
+        foreach (var task in tasks)
+        {
+            var dueText = task.DueLocal.HasValue ? task.DueLocal.Value.ToString("yyyy-MM-dd HH:mm") : "未设置";
+            var statusText = task.Status switch
+            {
+                TaskCardStatus.Todo => "待办",
+                TaskCardStatus.InProgress => "进行中",
+                TaskCardStatus.Done => "已完成",
+                _ => task.Status.ToString()
+            };
+            var priorityText = task.Priority switch
+            {
+                TaskCardPriority.Low => "低",
+                TaskCardPriority.Normal => "普通",
+                TaskCardPriority.High => "高",
+                _ => task.Priority.ToString()
+            };
+
+            lines.Add($"#{task.Id} [{statusText}] {task.Title} (优先级: {priorityText}, 截止: {dueText})");
+            if (!string.IsNullOrWhiteSpace(task.Description))
+            {
+                var desc = task.Description.Length <= 100 ? task.Description : task.Description[..100] + "...";
+                lines.Add($"    {desc}");
+            }
+        }
+
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    private static TaskCardStatus ParseTaskStatus(string value)
+    {
+        var normalized = value.Trim();
+        if (normalized.Equals("Todo", StringComparison.OrdinalIgnoreCase)
+            || normalized.Equals("待办", StringComparison.OrdinalIgnoreCase)
+            || normalized == "0")
+        {
+            return TaskCardStatus.Todo;
+        }
+
+        if (normalized.Equals("InProgress", StringComparison.OrdinalIgnoreCase)
+            || normalized.Equals("进行中", StringComparison.OrdinalIgnoreCase)
+            || normalized == "1")
+        {
+            return TaskCardStatus.InProgress;
+        }
+
+        if (normalized.Equals("Done", StringComparison.OrdinalIgnoreCase)
+            || normalized.Equals("已完成", StringComparison.OrdinalIgnoreCase)
+            || normalized == "2")
+        {
+            return TaskCardStatus.Done;
+        }
+
+        throw new ArgumentException($"未知任务状态: {value}");
+    }
+
+    private static TaskCardPriority ParseTaskPriority(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return TaskCardPriority.Normal;
+        }
+
+        var normalized = value.Trim();
+        if (normalized.Equals("Low", StringComparison.OrdinalIgnoreCase)
+            || normalized.Equals("低", StringComparison.OrdinalIgnoreCase)
+            || normalized == "0")
+        {
+            return TaskCardPriority.Low;
+        }
+
+        if (normalized.Equals("High", StringComparison.OrdinalIgnoreCase)
+            || normalized.Equals("高", StringComparison.OrdinalIgnoreCase)
+            || normalized == "2")
+        {
+            return TaskCardPriority.High;
+        }
+
+        return TaskCardPriority.Normal;
+    }
+
+    private static DateTime? ParseTaskDueDate(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        if (DateTime.TryParse(value.Trim(), CultureInfo.CurrentCulture, DateTimeStyles.None, out var due))
+        {
+            return due;
+        }
+
+        return null;
     }
 
     private string BuildClipboardSearch(JsonElement arguments)
