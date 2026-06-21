@@ -221,7 +221,7 @@ public sealed class SqliteClipboardRepository : IClipboardRepository
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
-    public IReadOnlyList<ClipboardItem> Get(long? groupId, ClipboardItemKind? kind, string? keyword, int limit)
+    public IReadOnlyList<ClipboardItem> Get(long? groupId, ClipboardItemKind? kind, string? keyword, int limit, DateTime? startUtc = null, DateTime? endUtc = null)
     {
         var result = new List<ClipboardItem>();
 
@@ -249,6 +249,18 @@ public sealed class SqliteClipboardRepository : IClipboardRepository
         {
             sql += " AND (Preview LIKE $kw OR Content LIKE $kw OR SourceAppName LIKE $kw OR SourceProcessPath LIKE $kw)";
             command.Parameters.AddWithValue("$kw", "%" + keyword.Trim() + "%");
+        }
+
+        if (startUtc is not null)
+        {
+            sql += " AND CreatedUtc >= $start";
+            command.Parameters.AddWithValue("$start", startUtc.Value.ToString("o", CultureInfo.InvariantCulture));
+        }
+
+        if (endUtc is not null)
+        {
+            sql += " AND CreatedUtc <= $end";
+            command.Parameters.AddWithValue("$end", endUtc.Value.ToString("o", CultureInfo.InvariantCulture));
         }
 
         sql += " ORDER BY Pinned DESC, CreatedUtc DESC LIMIT $limit;";

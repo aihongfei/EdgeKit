@@ -238,15 +238,6 @@
                                                     Stroke="{StaticResource MemoryColor}"
                                                     StrokeWidth="2"
                                                     EnableTooltip="True" />
-                            <chart:SplineAreaSeries Label="磁盘"
-                                                    ItemsSource="{Binding History}"
-                                                    XBindingPath="CapturedAt"
-                                                    YBindingPath="DiskPercent"
-                                                    YAxisName="PercentAxis"
-                                                    Fill="{StaticResource DiskFillBrush}"
-                                                    Stroke="{StaticResource DiskColor}"
-                                                    StrokeWidth="2"
-                                                    EnableTooltip="True" />
                             <chart:SplineAreaSeries Label="下行"
                                                     ItemsSource="{Binding History}"
                                                     XBindingPath="CapturedAt"

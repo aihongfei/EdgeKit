@@ -46,8 +46,10 @@ public sealed partial class ClipboardHistoryPage : Page
         ClipboardSearchInput.Text = _viewModel.SearchKeyword;
         BuildGroupFilterBar();
         UpdateEmptyState();
+        UpdateAutoGroupButtonState();
 
         _viewModel.RepositoryChanged += OnRepositoryChanged;
+        _viewModel.AutoGroupingChanged += OnAutoGroupingChanged;
     }
 
     protected override void OnNavigatedFrom(NavigationEventArgs e)
@@ -57,6 +59,7 @@ public sealed partial class ClipboardHistoryPage : Page
         if (_viewModel is not null)
         {
             _viewModel.RepositoryChanged -= OnRepositoryChanged;
+            _viewModel.AutoGroupingChanged -= OnAutoGroupingChanged;
         }
     }
 
@@ -64,6 +67,17 @@ public sealed partial class ClipboardHistoryPage : Page
     {
         DispatcherQueue.TryEnqueue(() =>
         {
+            _viewModel?.Refresh();
+            BuildGroupFilterBar();
+            UpdateEmptyState();
+        });
+    }
+
+    private void OnAutoGroupingChanged(object? sender, EventArgs e)
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            UpdateAutoGroupButtonState();
             _viewModel?.Refresh();
             BuildGroupFilterBar();
             UpdateEmptyState();
@@ -91,14 +105,19 @@ public sealed partial class ClipboardHistoryPage : Page
         }
 
         GroupFilterBar.Items.Clear();
+        GroupFilterBarExpanded.Items.Clear();
 
         // “全部”芯片。
         GroupFilterBar.Items.Add(CreateFilterChip("全部", groupId: null,
+            isSelected: _viewModel.SelectedGroupId is null));
+        GroupFilterBarExpanded.Items.Add(CreateFilterChip("全部", groupId: null,
             isSelected: _viewModel.SelectedGroupId is null));
 
         foreach (var group in _viewModel.Groups)
         {
             GroupFilterBar.Items.Add(CreateFilterChip(group.Name, group.Id,
+                isSelected: _viewModel.SelectedGroupId == group.Id, group.Id));
+            GroupFilterBarExpanded.Items.Add(CreateFilterChip(group.Name, group.Id,
                 isSelected: _viewModel.SelectedGroupId == group.Id, group.Id));
         }
     }
@@ -109,6 +128,7 @@ public sealed partial class ClipboardHistoryPage : Page
         {
             Content = label,
             Tag = groupId,
+            Margin = new Thickness(0),
             Background = isSelected
                 ? (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["EdgeAccentSoftBrush"]
                 : (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["EdgeControlBrush"],
@@ -319,6 +339,99 @@ public sealed partial class ClipboardHistoryPage : Page
         }
     }
 
+    private async void OnAutoGroupClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel is null || _viewModel.IsAutoGrouping)
+        {
+            return;
+        }
+
+        var (startUtc, endUtc) = await ShowAutoGroupDialogAsync();
+        if (startUtc is null || endUtc is null)
+        {
+            return;
+        }
+
+        ShowCopyToast("正在智能分组…", success: true);
+        try
+        {
+            await _viewModel.AutoGroupAsync(startUtc.Value, endUtc.Value);
+            ShowCopyToast("自动分组完成", success: true);
+        }
+        catch (Exception ex)
+        {
+            ShowCopyToast("自动分组失败: " + ex.Message, success: false);
+        }
+    }
+
+    private void UpdateAutoGroupButtonState()
+    {
+        if (_viewModel is null)
+        {
+            return;
+        }
+
+        var loading = _viewModel.IsAutoGrouping;
+        AutoGroupButton.IsEnabled = !loading;
+        AutoGroupNormalContent.Visibility = loading ? Visibility.Collapsed : Visibility.Visible;
+        AutoGroupLoadingContent.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private bool _isGroupFilterExpanded;
+
+    private void OnToggleGroupExpandClick(object sender, RoutedEventArgs e)
+    {
+        _isGroupFilterExpanded = !_isGroupFilterExpanded;
+        UpdateGroupFilterLayout();
+    }
+
+    private void UpdateGroupFilterLayout()
+    {
+        if (_isGroupFilterExpanded)
+        {
+            GroupFilterCollapsedRow.Visibility = Visibility.Collapsed;
+            GroupFilterExpandedRow.Visibility = Visibility.Visible;
+
+            MoveSearchBox(CollapsedSearchPlaceholder, ExpandedSearchPlaceholder);
+            ExpandGroupsIcon.Glyph = "\uE972";
+            SyncExpandedGroupWidth();
+        }
+        else
+        {
+            GroupFilterCollapsedRow.Visibility = Visibility.Visible;
+            GroupFilterExpandedRow.Visibility = Visibility.Collapsed;
+
+            MoveSearchBox(ExpandedSearchPlaceholder, CollapsedSearchPlaceholder);
+            ExpandGroupsIcon.Glyph = "\uE970";
+        }
+    }
+
+    private void OnExpandedGroupScrollViewerSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        SyncExpandedGroupWidth();
+    }
+
+    private void SyncExpandedGroupWidth()
+    {
+        var width = ExpandedGroupScrollViewer.ActualWidth;
+        if (width > 0)
+        {
+            GroupFilterBarExpanded.Width = width;
+        }
+    }
+
+    private static void MoveSearchBox(Panel from, Panel to)
+    {
+        if (from.Children.Count == 0)
+        {
+            return;
+        }
+
+        var searchBox = from.Children[0];
+        from.Children.RemoveAt(0);
+        to.Children.Add(searchBox);
+    }
+
     private void OnClearClick(object sender, RoutedEventArgs e)
     {
         _viewModel?.ClearCurrent();
@@ -368,5 +481,92 @@ public sealed partial class ClipboardHistoryPage : Page
 
         var result = await dialog.ShowAsync();
         return result == ContentDialogResult.Primary ? input.Text : null;
+    }
+
+    /// <summary>弹出日期范围选择对话框，返回 (startUtc, endUtc)；取消返回 (null, null)。</summary>
+    private async System.Threading.Tasks.Task<(DateTime? StartUtc, DateTime? EndUtc)> ShowAutoGroupDialogAsync()
+    {
+        var presets = new[]
+        {
+            "当天",
+            "昨天",
+            "近一周",
+            "近一个月",
+            "自定义"
+        };
+
+        var presetCombo = new ComboBox
+        {
+            Header = "时间范围",
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            SelectedIndex = 0
+        };
+        foreach (var preset in presets)
+        {
+            presetCombo.Items.Add(preset);
+        }
+
+        var startPicker = new CalendarDatePicker
+        {
+            Header = "开始日期",
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            Date = DateTime.Today
+        };
+        var endPicker = new CalendarDatePicker
+        {
+            Header = "结束日期",
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            Date = DateTime.Today
+        };
+
+        void ApplyPreset(int index)
+        {
+            var today = DateTime.Today;
+            startPicker.IsEnabled = index == 4;
+            endPicker.IsEnabled = index == 4;
+
+            (startPicker.Date, endPicker.Date) = index switch
+            {
+                0 => (today, today),
+                1 => (today.AddDays(-1), today.AddDays(-1)),
+                2 => (today.AddDays(-6), today),
+                3 => (today.AddDays(-29), today),
+                _ => (startPicker.Date, endPicker.Date)
+            };
+        }
+
+        ApplyPreset(0);
+        presetCombo.SelectionChanged += (_, _) => ApplyPreset(presetCombo.SelectedIndex);
+
+        var content = new StackPanel { Spacing = 12 };
+        content.Children.Add(presetCombo);
+        content.Children.Add(startPicker);
+        content.Children.Add(endPicker);
+
+        var dialog = new ContentDialog
+        {
+            Title = "自动分组",
+            Content = content,
+            PrimaryButtonText = "开始分组",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = XamlRoot,
+            RequestedTheme = ElementTheme.Dark
+        };
+
+        var result = await dialog.ShowAsync();
+        if (result != ContentDialogResult.Primary)
+        {
+            return (null, null);
+        }
+
+        if (startPicker.Date is not { } startLocal || endPicker.Date is not { } endLocal)
+        {
+            return (null, null);
+        }
+
+        var startUtc = startLocal.DateTime.ToUniversalTime();
+        var endUtc = endLocal.DateTime.AddDays(1).AddTicks(-1).ToUniversalTime();
+        return (startUtc, endUtc);
     }
 }

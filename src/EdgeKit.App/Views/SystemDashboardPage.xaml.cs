@@ -5,7 +5,9 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
+using Microsoft.UI.Xaml.Media;
 using Syncfusion.UI.Xaml.Charts;
+using Windows.UI;
 
 namespace EdgeKit.App.Views;
 
@@ -16,6 +18,20 @@ public sealed partial class SystemDashboardPage : Page
     private bool _sampling;
     private bool _captureInProgress;
     private int _captureGeneration;
+
+    private readonly Dictionary<string, SplineAreaSeries> _diskSeries = new();
+
+    private static readonly string[] DiskChartColors =
+    [
+        "#FFAA00",
+        "#FFCC00",
+        "#FFDD44",
+        "#FFEE88",
+        "#FFC107",
+        "#FFB300",
+        "#FFA000",
+        "#FF8F00"
+    ];
 
     public SystemDashboardPage()
     {
@@ -122,10 +138,91 @@ public sealed partial class SystemDashboardPage : Page
 
         DiskText.Text = FormatPercent(snapshot.DiskPercent);
         DiskList.ItemsSource = snapshot.DiskDetails;
+        SyncDiskSeries(snapshot);
 
         NetworkReceiveText.Text = snapshot.NetworkReceiveText;
         NetworkSendText.Text = snapshot.NetworkSendText;
         StatusText.Text = "更新于 " + snapshot.CapturedAt.ToString("HH:mm:ss");
+    }
+
+    private void SyncDiskSeries(SystemResourceSnapshot snapshot)
+    {
+        if (_viewModel is null)
+        {
+            return;
+        }
+
+        var currentLetters = snapshot.DiskDetails.Select(d => d.Letter).OrderBy(l => l).ToList();
+        var existingLetters = _diskSeries.Keys.ToList();
+
+        foreach (var letter in existingLetters.Except(currentLetters))
+        {
+            if (_diskSeries.TryGetValue(letter, out var series))
+            {
+                ResourceChart.Series.Remove(series);
+                _diskSeries.Remove(letter);
+            }
+        }
+
+        var networkSeries = ResourceChart.Series.OfType<SplineAreaSeries>()
+            .FirstOrDefault(s => s.Label is "下行" or "上行");
+        var insertIndex = networkSeries is null
+            ? ResourceChart.Series.Count
+            : ResourceChart.Series.IndexOf(networkSeries);
+
+        var newLetters = currentLetters.Except(existingLetters).OrderByDescending(l => l).ToList();
+
+        foreach (var letter in newLetters)
+        {
+            if (!_viewModel.DiskHistory.TryGetValue(letter, out var history))
+            {
+                continue;
+            }
+
+            var colorIndex = currentLetters.IndexOf(letter);
+            var color = ParseColor(DiskChartColors[colorIndex % DiskChartColors.Length]);
+            var fillBrush = new LinearGradientBrush
+            {
+                StartPoint = new global::Windows.Foundation.Point(0, 0),
+                EndPoint = new global::Windows.Foundation.Point(0, 1)
+            };
+            fillBrush.GradientStops.Add(new GradientStop
+            {
+                Offset = 0,
+                Color = Color.FromArgb(0x66, color.R, color.G, color.B)
+            });
+            fillBrush.GradientStops.Add(new GradientStop
+            {
+                Offset = 1,
+                Color = Color.FromArgb(0x00, color.R, color.G, color.B)
+            });
+
+            var series = new SplineAreaSeries
+            {
+                Label = letter,
+                ItemsSource = history,
+                XBindingPath = "CapturedAt",
+                YBindingPath = "UsedPercent",
+                YAxisName = "PercentAxis",
+                Stroke = new SolidColorBrush(color),
+                Fill = fillBrush,
+                StrokeWidth = 2,
+                EnableTooltip = true
+            };
+
+            ResourceChart.Series.Insert(insertIndex, series);
+            _diskSeries[letter] = series;
+        }
+    }
+
+    private static Color ParseColor(string hex)
+    {
+        hex = hex.TrimStart('#');
+        return Color.FromArgb(
+            0xFF,
+            Convert.ToByte(hex.Substring(0, 2), 16),
+            Convert.ToByte(hex.Substring(2, 2), 16),
+            Convert.ToByte(hex.Substring(4, 2), 16));
     }
 
     private void OnDateTimeAxisLabelCreated(object sender, ChartAxisLabelEventArgs e)

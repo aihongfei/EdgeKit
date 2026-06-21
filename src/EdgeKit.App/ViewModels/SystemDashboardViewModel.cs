@@ -15,6 +15,8 @@ public sealed class SystemDashboardViewModel
 
     public ObservableCollection<SystemResourcePoint> History { get; } = new();
 
+    public Dictionary<string, ObservableCollection<DiskHistoryPoint>> DiskHistory { get; } = new();
+
     public SystemResourceSnapshot? Current { get; private set; }
 
     public SystemResourceSnapshot Capture()
@@ -49,6 +51,22 @@ public sealed class SystemDashboardViewModel
         {
             History.RemoveAt(0);
         }
+
+        foreach (var disk in snapshot.DiskDetails)
+        {
+            if (!DiskHistory.TryGetValue(disk.Letter, out var history))
+            {
+                history = new ObservableCollection<DiskHistoryPoint>();
+                DiskHistory[disk.Letter] = history;
+            }
+
+            history.Add(new DiskHistoryPoint(snapshot.CapturedAt, disk.UsedPercent));
+
+            while (history.Count > 60)
+            {
+                history.RemoveAt(0);
+            }
+        }
     }
 
     private static double ToMbps(long bytesPerSecond)
@@ -63,3 +81,5 @@ public sealed record SystemResourcePoint(
     double DiskPercent,
     double NetworkReceiveMbps,
     double NetworkSendMbps);
+
+public sealed record DiskHistoryPoint(DateTime CapturedAt, double UsedPercent);

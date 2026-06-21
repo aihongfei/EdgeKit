@@ -7,6 +7,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:vm="using:EdgeKit.App.ViewModels"
     xmlns:controls="using:Microsoft.UI.Xaml.Controls"
+    xmlns:local="using:EdgeKit.App.Controls"
     Background="Transparent"
     RequestedTheme="Dark"
     mc:Ignorable="d">
@@ -124,6 +125,23 @@
                         <TextBlock Text="新建分组" />
                     </StackPanel>
                 </Button>
+                <Button x:Name="AutoGroupButton" Click="OnAutoGroupClick"
+                        Background="{ThemeResource EdgeControlBrush}"
+                        BorderBrush="{ThemeResource EdgeLineBrush}">
+                    <Grid>
+                        <StackPanel x:Name="AutoGroupNormalContent"
+                                    Orientation="Horizontal" Spacing="6">
+                            <FontIcon FontSize="14" Glyph="&#xE9D2;" />
+                            <TextBlock Text="自动分组" />
+                        </StackPanel>
+                        <StackPanel x:Name="AutoGroupLoadingContent"
+                                    Orientation="Horizontal" Spacing="6"
+                                    Visibility="Collapsed">
+                            <ProgressRing Width="16" Height="16" IsActive="True" />
+                            <TextBlock Text="分组中…" />
+                        </StackPanel>
+                    </Grid>
+                </Button>
                 <Button x:Name="ClearButton" Click="OnClearClick"
                         Background="{ThemeResource EdgeControlBrush}"
                         BorderBrush="{ThemeResource EdgeLineBrush}">
@@ -136,59 +154,127 @@
         </Grid>
 
         <!-- 分组筛选 + 全局搜索：搜索时查全部分组里的历史。 -->
-        <Grid Grid.Row="1" ColumnSpacing="12">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="300" />
-            </Grid.ColumnDefinitions>
+        <Grid Grid.Row="1">
+            <!-- 默认收起：分组横向滚动 + 展开按钮 + 搜索框 -->
+            <Grid x:Name="GroupFilterCollapsedRow" ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="300" />
+                </Grid.ColumnDefinitions>
 
-            <ScrollViewer Grid.Column="0"
-                          HorizontalScrollMode="Auto"
-                          HorizontalScrollBarVisibility="Auto"
-                          VerticalScrollMode="Disabled" VerticalScrollBarVisibility="Hidden">
-                <ItemsControl x:Name="GroupFilterBar">
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <StackPanel Orientation="Horizontal" Spacing="8" />
-                        </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                </ItemsControl>
-            </ScrollViewer>
+                <ScrollViewer Grid.Column="0"
+                              HorizontalScrollMode="Auto"
+                              HorizontalScrollBarVisibility="Hidden"
+                              VerticalScrollMode="Disabled" VerticalScrollBarVisibility="Hidden">
+                    <ItemsControl x:Name="GroupFilterBar">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" Spacing="8" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                    </ItemsControl>
+                </ScrollViewer>
 
-            <Border Grid.Column="1"
-                    Height="36"
-                    CornerRadius="8"
-                    Background="{ThemeResource EdgeControlBrush}"
-                    BorderBrush="{ThemeResource EdgeLineBrush}"
-                    BorderThickness="1">
-                <Grid Padding="10,0" ColumnSpacing="8">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <FontIcon Grid.Column="0"
-                              Glyph="&#xE721;"
-                              FontSize="14"
-                              Foreground="{ThemeResource EdgeMutedBrush}" />
-                    <TextBox x:Name="ClipboardSearchInput"
-                             Grid.Column="1"
-                             PlaceholderText="搜索历史或来源"
-                             BorderThickness="0"
-                             Background="Transparent"
-                             VerticalAlignment="Center"
-                             TextChanged="OnClipboardSearchTextChanged">
-                        <TextBox.Resources>
-                            <SolidColorBrush x:Key="TextControlBackground" Color="Transparent" />
-                            <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="Transparent" />
-                            <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="Transparent" />
-                            <SolidColorBrush x:Key="TextControlBorderBrush" Color="Transparent" />
-                            <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="Transparent" />
-                            <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="Transparent" />
-                            <Thickness x:Key="TextControlBorderThemeThicknessFocused">0</Thickness>
-                        </TextBox.Resources>
-                    </TextBox>
+                <Button x:Name="ExpandGroupsButton"
+                         Grid.Column="1"
+                         Click="OnToggleGroupExpandClick"
+                         Background="Transparent"
+                         BorderBrush="Transparent"
+                         Padding="6,0"
+                         VerticalAlignment="Center">
+                    <FontIcon x:Name="ExpandGroupsIcon"
+                               FontSize="12"
+                               Glyph="&#xE970;"
+                               Foreground="{ThemeResource EdgeMutedBrush}" />
+                </Button>
+
+                <Grid x:Name="CollapsedSearchPlaceholder" Grid.Column="2">
+                    <Border x:Name="SearchBoxContainer"
+                             Height="36"
+                             CornerRadius="8"
+                             Background="{ThemeResource EdgeControlBrush}"
+                             BorderBrush="{ThemeResource EdgeLineBrush}"
+                             BorderThickness="1">
+                        <Grid Padding="10,0" ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <FontIcon Grid.Column="0"
+                                      Glyph="&#xE721;"
+                                      FontSize="14"
+                                      Foreground="{ThemeResource EdgeMutedBrush}" />
+                            <TextBox x:Name="ClipboardSearchInput"
+                                     Grid.Column="1"
+                                     PlaceholderText="搜索历史或来源"
+                                     BorderThickness="0"
+                                     Background="Transparent"
+                                     VerticalAlignment="Center"
+                                     TextChanged="OnClipboardSearchTextChanged">
+                                <TextBox.Resources>
+                                    <SolidColorBrush x:Key="TextControlBackground" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlBorderBrush" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="Transparent" />
+                                    <Thickness x:Key="TextControlBorderThemeThicknessFocused">0</Thickness>
+                                </TextBox.Resources>
+                            </TextBox>
+                        </Grid>
+                    </Border>
                 </Grid>
-            </Border>
+            </Grid>
+
+            <!-- 展开：分组占满整行，最多两行并纵向滚动，搜索框位于下方 -->
+            <Grid x:Name="GroupFilterExpandedRow"
+                  Visibility="Collapsed"
+                  RowSpacing="12">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <Grid Grid.Row="0" ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <ScrollViewer x:Name="ExpandedGroupScrollViewer"
+                                  Grid.Column="0"
+                                  SizeChanged="OnExpandedGroupScrollViewerSizeChanged"
+                                  VerticalScrollMode="Auto"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollMode="Disabled"
+                                  HorizontalScrollBarVisibility="Hidden"
+                                  MaxHeight="88">
+                        <ItemsControl x:Name="GroupFilterBarExpanded"
+                                      HorizontalAlignment="Left">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <local:WrapPanel HorizontalSpacing="8"
+                                                    VerticalSpacing="8" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                        </ItemsControl>
+                    </ScrollViewer>
+
+                    <Button Grid.Column="1"
+                             Click="OnToggleGroupExpandClick"
+                             Background="Transparent"
+                             BorderBrush="Transparent"
+                             Padding="6,0"
+                             VerticalAlignment="Center">
+                        <FontIcon FontSize="12"
+                                   Glyph="&#xE972;"
+                                   Foreground="{ThemeResource EdgeMutedBrush}" />
+                    </Button>
+                </Grid>
+
+                <Grid x:Name="ExpandedSearchPlaceholder" Grid.Row="1" />
+            </Grid>
         </Grid>
 
         <!-- 历史网格：WrapGrid 横向排布，按可用宽度自动换行（一行多个），列宽随宽度自适应均分。 -->

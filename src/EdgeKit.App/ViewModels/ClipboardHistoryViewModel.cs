@@ -1,7 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 using EdgeKit.App.Interaction;
+using EdgeKit.Core.Agent;
 using EdgeKit.Core.Clipboard;
 
 namespace EdgeKit.App.ViewModels;
@@ -15,13 +20,25 @@ public sealed class ClipboardHistoryViewModel
     // 列表展示条数上限。
     private const int DisplayLimit = 300;
 
+    private static readonly string[] GroupColors =
+    [
+        "#4C8DFF",
+        "#00D4AA",
+        "#FF4D94",
+        "#FFAA00",
+        "#9B59B6",
+        "#E74C3C"
+    ];
+
     private readonly IClipboardRepository _repository;
     private readonly ClipboardContentWriter _clipboardWriter;
+    private readonly IAgentService _agentService;
 
-    public ClipboardHistoryViewModel(IClipboardRepository repository, ClipboardContentWriter clipboardWriter)
+    public ClipboardHistoryViewModel(IClipboardRepository repository, ClipboardContentWriter clipboardWriter, IAgentService agentService)
     {
         _repository = repository;
         _clipboardWriter = clipboardWriter;
+        _agentService = agentService;
     }
 
     /// <summary>历史条目（当前筛选下）。</summary>
@@ -41,6 +58,25 @@ public sealed class ClipboardHistoryViewModel
     {
         add => _repository.Changed += value;
         remove => _repository.Changed -= value;
+    }
+
+    /// <summary>自动分组状态变更事件。</summary>
+    public event EventHandler? AutoGroupingChanged;
+
+    private bool _isAutoGrouping;
+
+    /// <summary>是否正在执行自动分组。</summary>
+    public bool IsAutoGrouping
+    {
+        get => _isAutoGrouping;
+        private set
+        {
+            if (_isAutoGrouping != value)
+            {
+                _isAutoGrouping = value;
+                AutoGroupingChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
     }
 
     /// <summary>是否当前无任何历史条目（空状态绑定）。</summary>
@@ -73,10 +109,145 @@ public sealed class ClipboardHistoryViewModel
         var groupId = string.IsNullOrWhiteSpace(SearchKeyword) ? SelectedGroupId : null;
         var keyword = string.IsNullOrWhiteSpace(SearchKeyword) ? null : SearchKeyword;
 
-        foreach (var item in _repository.Get(groupId, kind: null, keyword, DisplayLimit))
+        foreach (var item in _repository.Get(groupId, kind: null, keyword, DisplayLimit, null, null))
         {
             Items.Add(new ClipboardItemViewModel(item));
         }
+    }
+
+    /// <summary>调用智能体按语义自动分组指定时间范围内的剪贴板记录。</summary>
+    public async Task AutoGroupAsync(DateTime startUtc, DateTime endUtc, CancellationToken cancellationToken = default)
+    {
+        IsAutoGrouping = true;
+        try
+        {
+            var items = _repository.Get(null, null, null, int.MaxValue, startUtc, endUtc);
+            if (items.Count == 0)
+            {
+                return;
+            }
+
+            var prompt = BuildAutoGroupPrompt(items);
+            var conversation = _agentService.CreateConversation(AgentConversationMode.Chat);
+
+            try
+            {
+                var result = await _agentService.SendAsync(conversation.Id, prompt, cancellationToken).ConfigureAwait(false);
+                if (!result.Success || string.IsNullOrWhiteSpace(result.AssistantMessage?.Content))
+                {
+                    return;
+                }
+
+                ApplyAutoGroupResult(result.AssistantMessage.Content, items);
+            }
+            finally
+            {
+                _agentService.DeleteConversation(conversation.Id);
+            }
+        }
+        finally
+        {
+            IsAutoGrouping = false;
+        }
+    }
+
+    private static string BuildAutoGroupPrompt(IReadOnlyList<ClipboardItem> items)
+    {
+        var lines = items.Select(item =>
+        {
+            var kind = item.Kind.ToString();
+            var preview = string.IsNullOrWhiteSpace(item.Preview) ? item.Content : item.Preview;
+            preview = preview.Replace('\n', ' ').Replace('\r', ' ');
+            if (preview.Length > 200)
+            {
+                preview = preview[..200];
+            }
+
+            return $"[{item.Id}] {kind}: {preview}";
+        });
+
+        return
+            "请根据以下剪贴板记录的内容语义进行自动分组。\n" +
+            "要求：\n" +
+            "1. 同一分组的记录语义相近；\n" +
+            "2. 如果一个记录无法归入任何有意义的组，可以忽略；\n" +
+            "3. 返回严格的 JSON 数组格式，不要附加解释；\n" +
+            "4. 颜色从以下列表中选择：#4C8DFF、#00D4AA、#FF4D94、#FFAA00、#9B59B6、#E74C3C。\n\n" +
+            "JSON 格式示例：\n" +
+            "{\n" +
+            "  \"groups\": [\n" +
+            "    {\"name\": \"工作代码\", \"colorHex\": \"#4C8DFF\", \"itemIds\": [1, 2, 3]},\n" +
+            "    {\"name\": \"常用链接\", \"colorHex\": \"#00D4AA\", \"itemIds\": [4, 5]}\n" +
+            "  ]\n" +
+            "}\n\n" +
+            "记录列表（[Id] 类型: 预览）：\n" +
+            string.Join("\n", lines);
+    }
+
+    private void ApplyAutoGroupResult(string assistantContent, IReadOnlyList<ClipboardItem> sourceItems)
+    {
+        var json = ExtractJson(assistantContent);
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return;
+        }
+
+        using var document = JsonDocument.Parse(json);
+        if (!document.RootElement.TryGetProperty("groups", out var groupsElement) || groupsElement.ValueKind != JsonValueKind.Array)
+        {
+            return;
+        }
+
+        var existingGroups = _repository.GetGroups().ToDictionary(g => g.Name, StringComparer.OrdinalIgnoreCase);
+        var itemIdSet = sourceItems.Select(i => i.Id).ToHashSet();
+
+        foreach (var groupElement in groupsElement.EnumerateArray())
+        {
+            var name = groupElement.GetProperty("name").GetString();
+            var colorHex = groupElement.GetProperty("colorHex").GetString();
+            if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(colorHex))
+            {
+                continue;
+            }
+
+            var itemIds = groupElement.GetProperty("itemIds")
+                .EnumerateArray()
+                .Select(e => e.GetInt64())
+                .Where(id => itemIdSet.Contains(id))
+                .ToArray();
+
+            if (itemIds.Length == 0)
+            {
+                continue;
+            }
+
+            long groupId;
+            if (!existingGroups.TryGetValue(name, out var existingGroup))
+            {
+                groupId = _repository.AddGroup(name.Trim(), colorHex);
+            }
+            else
+            {
+                groupId = existingGroup.Id;
+            }
+
+            foreach (var id in itemIds)
+            {
+                _repository.MoveToGroup(id, groupId);
+            }
+        }
+    }
+
+    private static string? ExtractJson(string content)
+    {
+        var start = content.IndexOf('{');
+        var end = content.LastIndexOf('}');
+        if (start >= 0 && end > start)
+        {
+            return content[start..(end + 1)];
+        }
+
+        return null;
     }
 
     /// <summary>把条目内容写回系统剪贴板（设跳过标记避免重复记录）。</summary>

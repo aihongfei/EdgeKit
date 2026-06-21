@@ -35,10 +35,10 @@ public interface IClipboardRepository
     void MoveToGroup(long id, long? groupId);
 
     /// <summary>
-    /// 查询记录。可选按分组、类型、关键字筛选，按固定优先 + 时间倒序，最多 <paramref name="limit"/> 条。
+    /// 查询记录。可选按分组、类型、关键字、UTC 时间范围筛选，按固定优先 + 时间倒序，最多 <paramref name="limit"/> 条。
     /// <paramref name="groupId"/> 为 null 表示不限分组（全部）。
     /// </summary>
-    IReadOnlyList<ClipboardItem> Get(long? groupId, ClipboardItemKind? kind, string? keyword, int limit);
+    IReadOnlyList<ClipboardItem> Get(long? groupId, ClipboardItemKind? kind, string? keyword, int limit, DateTime? startUtc = null, DateTime? endUtc = null);
 
     // ---- 分组 ----
 
