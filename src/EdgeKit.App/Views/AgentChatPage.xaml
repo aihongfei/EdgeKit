@@ -792,7 +792,7 @@
 
                 <TextBox x:Name="AiMcpServersJsonBox"
                          Header="MCP Servers JSON"
-                         PlaceholderText="填写 MCP servers JSON 配置"
+                         PlaceholderText="填写通用 mcpServers JSON，例如 { &quot;mcpServers&quot;: { ... } }"
                          AcceptsReturn="True"
                          TextWrapping="Wrap"
                          MinHeight="96"

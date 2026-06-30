@@ -93,7 +93,10 @@ public sealed class McpToolService
                 Command = server.Command,
                 Arguments = server.Arguments.ToList(),
                 WorkingDirectory = string.IsNullOrWhiteSpace(server.WorkingDirectory) ? null : server.WorkingDirectory,
-                InheritEnvironmentVariables = true
+                InheritEnvironmentVariables = true,
+                EnvironmentVariables = server.EnvironmentVariables.Count == 0
+                    ? null
+                    : server.EnvironmentVariables.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal)
             }),
             cancellationToken: cancellationToken).ConfigureAwait(false);
         return (await client.ListToolsAsync(cancellationToken: cancellationToken).ConfigureAwait(false)).ToArray();
@@ -103,25 +106,39 @@ public sealed class McpToolService
     {
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
-        var servers = root.ValueKind == JsonValueKind.Object && root.TryGetProperty("servers", out var array)
-            ? array
-            : root;
-
-        if (servers.ValueKind != JsonValueKind.Array)
+        if (root.ValueKind != JsonValueKind.Object
+            || !root.TryGetProperty("mcpServers", out var servers)
+            || servers.ValueKind != JsonValueKind.Object)
         {
-            throw new JsonException("MCP 配置必须是数组，或包含 servers 数组。");
+            throw new JsonException("MCP 配置必须是通用格式：包含 mcpServers 对象。");
         }
 
         var result = new List<McpServerConfig>();
-        foreach (var item in servers.EnumerateArray())
+        foreach (var server in servers.EnumerateObject())
         {
-            var name = GetString(item, "name");
-            var command = GetString(item, "command");
-            var args = item.TryGetProperty("arguments", out var arguments) && arguments.ValueKind == JsonValueKind.Array
-                ? arguments.EnumerateArray().Select(v => v.ToString()).Where(v => !string.IsNullOrWhiteSpace(v)).ToArray()
-                : Array.Empty<string>();
-            var workingDirectory = item.TryGetProperty("workingDirectory", out var wd) ? wd.ToString() : string.Empty;
-            result.Add(new McpServerConfig(name, command, args, workingDirectory));
+            if (string.IsNullOrWhiteSpace(server.Name))
+            {
+                throw new JsonException("MCP server 名称不能为空。");
+            }
+
+            var item = server.Value;
+            if (item.ValueKind != JsonValueKind.Object)
+            {
+                throw new JsonException("MCP server 配置必须是对象: " + server.Name);
+            }
+
+            var type = GetOptionalString(item, "type");
+            if (!string.IsNullOrWhiteSpace(type) && !type.Equals("stdio", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new JsonException("当前仅支持 stdio MCP server: " + server.Name);
+            }
+
+            result.Add(new McpServerConfig(
+                server.Name.Trim(),
+                GetString(item, "command"),
+                GetStringArray(item, "args"),
+                GetStringMap(item, "env"),
+                GetOptionalString(item, "cwd")));
         }
 
         return result;
@@ -173,6 +190,54 @@ public sealed class McpToolService
         return value.ToString().Trim();
     }
 
+    private static string GetOptionalString(JsonElement item, string name)
+    {
+        if (!item.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Null)
+        {
+            return string.Empty;
+        }
+
+        return value.ToString().Trim();
+    }
+
+    private static IReadOnlyList<string> GetStringArray(JsonElement item, string name)
+    {
+        if (!item.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Null)
+        {
+            return Array.Empty<string>();
+        }
+
+        if (value.ValueKind != JsonValueKind.Array)
+        {
+            throw new JsonException("MCP server 字段必须是数组: " + name);
+        }
+
+        return value.EnumerateArray()
+            .Select(v => v.ToString())
+            .Where(v => !string.IsNullOrWhiteSpace(v))
+            .Select(v => v.Trim())
+            .ToArray();
+    }
+
+    private static IReadOnlyDictionary<string, string?> GetStringMap(JsonElement item, string name)
+    {
+        if (!item.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Null)
+        {
+            return new Dictionary<string, string?>();
+        }
+
+        if (value.ValueKind != JsonValueKind.Object)
+        {
+            throw new JsonException("MCP server 字段必须是对象: " + name);
+        }
+
+        return value.EnumerateObject()
+            .ToDictionary(
+                property => property.Name,
+                property => property.Value.ValueKind == JsonValueKind.Null ? null : property.Value.ToString(),
+                StringComparer.Ordinal);
+    }
+
     private static string BuildToolId(string serverName, string toolName)
         => "mcp_" + SanitizeName(serverName) + "__" + SanitizeName(toolName);
 
@@ -195,5 +260,6 @@ public sealed class McpToolService
         string Name,
         string Command,
         IReadOnlyList<string> Arguments,
+        IReadOnlyDictionary<string, string?> EnvironmentVariables,
         string WorkingDirectory);
 }

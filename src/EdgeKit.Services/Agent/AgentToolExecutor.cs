@@ -1118,16 +1118,21 @@ public sealed class AgentToolExecutor
     private async Task<string> SearchTavilyAsync(string query, int limit, string apiKey, CancellationToken cancellationToken)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, "https://api.tavily.com/search");
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
         request.Content = new StringContent(JsonSerializer.Serialize(new
         {
-            api_key = apiKey,
             query,
             max_results = limit,
             search_depth = "basic"
         }), Encoding.UTF8, "application/json");
         using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
-        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
+        var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new HttpRequestException($"Tavily 搜索失败: {(int)response.StatusCode} {response.ReasonPhrase}. {TrimHttpError(responseText)}");
+        }
+
+        using var document = JsonDocument.Parse(responseText);
         if (!document.RootElement.TryGetProperty("results", out var results)
             || results.ValueKind != JsonValueKind.Array)
         {
@@ -1183,6 +1188,14 @@ public sealed class AgentToolExecutor
                 $"{index + 1}. {EmptyFallback(i.Title)}{Environment.NewLine}{i.Url}{Environment.NewLine}{EmptyFallback(i.Snippet)}")
             .ToArray();
         return lines.Length == 0 ? "未找到搜索结果。" : string.Join(Environment.NewLine + Environment.NewLine, lines);
+    }
+
+    private static string TrimHttpError(string text)
+    {
+        var normalized = string.IsNullOrWhiteSpace(text)
+            ? string.Empty
+            : Regex.Replace(text.Trim(), "\\s+", " ");
+        return normalized.Length <= 500 ? normalized : normalized[..500] + "...";
     }
 
     private static string NormalizeExistingFile(string path)
