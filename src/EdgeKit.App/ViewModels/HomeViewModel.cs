@@ -8,6 +8,7 @@ using EdgeKit.Core.Recent;
 using EdgeKit.Core.Services;
 using EdgeKit.Core.Tools;
 using EdgeKit.Services.Diagnostics;
+using EdgeKit.Services.Quotes;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml.Media.Imaging;
 
@@ -31,6 +32,8 @@ public sealed class HomeViewModel
     private readonly QuickLaunchActionService _quickLaunchActions;
     private readonly IToolCatalog _toolCatalog;
     private readonly WindowManagementService _windowManagement;
+    private readonly DailyQuoteService _dailyQuoteService;
+    private DailyQuote? _dailyQuote;
 
     public HomeViewModel(
         IRecentItemsRepository recentItemsRepository,
@@ -41,7 +44,8 @@ public sealed class HomeViewModel
         InstalledAppIndex appIndex,
         QuickLaunchActionService quickLaunchActions,
         IToolCatalog toolCatalog,
-        WindowManagementService windowManagement)
+        WindowManagementService windowManagement,
+        DailyQuoteService dailyQuoteService)
     {
         _recentItemsRepository = recentItemsRepository;
         _settings = settings;
@@ -52,6 +56,7 @@ public sealed class HomeViewModel
         _quickLaunchActions = quickLaunchActions;
         _toolCatalog = toolCatalog;
         _windowManagement = windowManagement;
+        _dailyQuoteService = dailyQuoteService;
     }
 
     /// <summary>快速启动磁贴，最后一项固定为加号。</summary>
@@ -105,6 +110,15 @@ public sealed class HomeViewModel
     /// <summary>是否无任何最近剪贴板历史。</summary>
     public bool HasNoClipboardItems => RecentClipboardItems.Count == 0;
 
+    /// <summary>当前每日一言，可能为 null。</summary>
+    public DailyQuote? DailyQuote => _dailyQuote;
+
+    /// <summary>是否展示每日一言。</summary>
+    public bool ShowDailyQuote => _settings.ShowDailyQuote;
+
+    /// <summary>每日一言当前分类。</summary>
+    public string DailyQuoteCategory => _settings.DailyQuoteCategory;
+
     /// <summary>
     /// 重新拉取数据并刷新集合。须在 UI 线程调用。
     /// </summary>
@@ -135,6 +149,14 @@ public sealed class HomeViewModel
                 RecentClipboardItems.Add(new ClipboardItemViewModel(item));
             }
         }
+
+        RefreshDailyQuote();
+    }
+
+    /// <summary>按当前设置分类重新抽取每日一言。</summary>
+    public void RefreshDailyQuote()
+    {
+        _dailyQuote = _dailyQuoteService.GetQuote(_settings.DailyQuoteCategory);
     }
 
     public void RefreshActiveWindows(nint ownerHwnd)

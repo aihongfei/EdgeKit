@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using EdgeKit.App.Commands;
 using EdgeKit.App.Interaction;
+using EdgeKit.App.Notes;
 using EdgeKit.App.ViewModels;
 using EdgeKit.App.Windows.Backdrop;
 using EdgeKit.Core.Commands;
@@ -9,8 +10,10 @@ using EdgeKit.Core.QuickLaunch;
 using EdgeKit.Core.Recent;
 using EdgeKit.Core.Services;
 using EdgeKit.Core.Agent;
+using EdgeKit.Core.Clipboard;
 using EdgeKit.Services.Diagnostics;
 using EdgeKit.Services.Images;
+using EdgeKit.Services.Ocr;
 using EdgeKit.Services.Text;
 using EdgeKit.Native;
 using Microsoft.UI.Dispatching;
@@ -68,6 +71,10 @@ public sealed partial class DrawerWindow : Window
     private readonly IAgentService _agentService;
     private readonly TaskBoardViewModel _taskBoardViewModel;
     private readonly SystemDashboardViewModel _systemDashboardViewModel;
+    private readonly IOcrService _ocrService;
+    private readonly IClipboardRepository _clipboardRepository;
+    private readonly StickyNoteManagerService _stickyNoteManagerService;
+    private readonly StickyNotesViewModel _stickyNotesViewModel;
 
     // 抽屉基础宽度（收缩态，物理像素）下限。
     private const int MinDrawerWidth = 360;
@@ -151,7 +158,11 @@ public sealed partial class DrawerWindow : Window
         YoudaoTranslationService youdaoService,
         IAgentService agentService,
         TaskBoardViewModel taskBoardViewModel,
-        SystemDashboardViewModel systemDashboardViewModel)
+        SystemDashboardViewModel systemDashboardViewModel,
+        IOcrService ocrService,
+        IClipboardRepository clipboardRepository,
+        StickyNoteManagerService stickyNoteManagerService,
+        StickyNotesViewModel stickyNotesViewModel)
     {
         _settings = settings;
         _shellViewModel = shellViewModel;
@@ -173,11 +184,15 @@ public sealed partial class DrawerWindow : Window
         _windowManagement = windowManagement;
         _fileLocks = fileLocks;
         _imageTools = imageTools;
+        _ocrService = ocrService;
+        _clipboardRepository = clipboardRepository;
         _textTools = textTools;
         _youdaoService = youdaoService;
         _agentService = agentService;
         _taskBoardViewModel = taskBoardViewModel;
         _systemDashboardViewModel = systemDashboardViewModel;
+        _stickyNoteManagerService = stickyNoteManagerService;
+        _stickyNotesViewModel = stickyNotesViewModel;
         InitializeComponent();
 
         // 用全局快捷键设置初始化搜索框提示。
@@ -277,6 +292,7 @@ public sealed partial class DrawerWindow : Window
         _edgeMonitor.HandleClicked -= OnEdgeHandleClicked;
         _edgeMonitor.Dispose();
         _windowMonitor.Dispose();
+        _stickyNoteManagerService.CloseAll();
         _clipboardService.Dispose();
         _searchCoordinator.EverythingStateChanged -= OnEverythingStateChanged;
         _searchCancellationSource?.Cancel();

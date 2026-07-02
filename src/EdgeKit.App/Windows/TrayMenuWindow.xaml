@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Window
+    x:Class="EdgeKit.App.Windows.TrayMenuWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:interaction="using:EdgeKit.App.Interaction"
+    xmlns:local="using:EdgeKit.App.Windows"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    Title="EdgeKit 托盘菜单"
+    mc:Ignorable="d">
+
+    <Grid x:Name="RootGrid"
+          Background="Transparent"
+          RequestedTheme="Dark">
+        <Border x:Name="RootBorder"
+                Padding="6"
+                BorderBrush="{ThemeResource EdgeLineBrush}"
+                BorderThickness="1"
+                CornerRadius="10">
+            <Border.Background>
+                <AcrylicBrush FallbackColor="#E61A1A1A"
+                              TintColor="#1A1A1A"
+                              TintLuminosityOpacity="0.85"
+                              TintOpacity="0.75" />
+            </Border.Background>
+
+            <ItemsControl x:Name="MenuItemsControl">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel Orientation="Vertical" />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplateSelector>
+                    <local:TrayMenuItemTemplateSelector>
+                        <local:TrayMenuItemTemplateSelector.CommandTemplate>
+                            <DataTemplate x:DataType="interaction:TrayMenuItem">
+                                <Button Height="36"
+                                        Padding="8,0"
+                                        HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Stretch"
+                                        Background="Transparent"
+                                        BorderThickness="0"
+                                        CornerRadius="8"
+                                        Click="OnMenuItemClick"
+                                        Tag="{Binding Id}">
+                                    <Button.Resources>
+                                        <SolidColorBrush x:Key="ButtonBackground" Color="Transparent" />
+                                        <StaticResource x:Key="ButtonBackgroundPointerOver" ResourceKey="EdgeControlBrush" />
+                                        <StaticResource x:Key="ButtonBackgroundPressed" ResourceKey="EdgePanelBrush" />
+                                        <StaticResource x:Key="ButtonForeground" ResourceKey="EdgeTextBrush" />
+                                        <StaticResource x:Key="ButtonForegroundPointerOver" ResourceKey="EdgeTextBrush" />
+                                        <StaticResource x:Key="ButtonForegroundPressed" ResourceKey="EdgeTextBrush" />
+                                    </Button.Resources>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <FontIcon Grid.Column="0"
+                                                  VerticalAlignment="Center"
+                                                  FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                  FontSize="16"
+                                                  Foreground="{ThemeResource EdgeTextBrush}"
+                                                  Glyph="{Binding Glyph}" />
+                                        <TextBlock Grid.Column="1"
+                                                   Margin="12,0,0,0"
+                                                   VerticalAlignment="Center"
+                                                   FontSize="14"
+                                                   Foreground="{ThemeResource EdgeTextBrush}"
+                                                   Text="{Binding Text}" />
+                                    </Grid>
+                                </Button>
+                            </DataTemplate>
+                        </local:TrayMenuItemTemplateSelector.CommandTemplate>
+                        <local:TrayMenuItemTemplateSelector.SeparatorTemplate>
+                            <DataTemplate x:DataType="interaction:TrayMenuItem">
+                                <Border Height="1"
+                                        Margin="8,4"
+                                        Background="{ThemeResource EdgeLineBrush}" />
+                            </DataTemplate>
+                        </local:TrayMenuItemTemplateSelector.SeparatorTemplate>
+                    </local:TrayMenuItemTemplateSelector>
+                </ItemsControl.ItemTemplateSelector>
+            </ItemsControl>
+        </Border>
+    </Grid>
+</Window>

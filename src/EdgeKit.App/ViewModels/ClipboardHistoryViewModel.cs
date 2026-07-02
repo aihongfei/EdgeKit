@@ -2,12 +2,15 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using EdgeKit.App.Interaction;
 using EdgeKit.Core.Agent;
 using EdgeKit.Core.Clipboard;
+using EdgeKit.Services.Ocr;
 
 namespace EdgeKit.App.ViewModels;
 
@@ -33,12 +36,18 @@ public sealed class ClipboardHistoryViewModel
     private readonly IClipboardRepository _repository;
     private readonly ClipboardContentWriter _clipboardWriter;
     private readonly IAgentService _agentService;
+    private readonly IOcrService _ocrService;
 
-    public ClipboardHistoryViewModel(IClipboardRepository repository, ClipboardContentWriter clipboardWriter, IAgentService agentService)
+    public ClipboardHistoryViewModel(
+        IClipboardRepository repository,
+        ClipboardContentWriter clipboardWriter,
+        IAgentService agentService,
+        IOcrService ocrService)
     {
         _repository = repository;
         _clipboardWriter = clipboardWriter;
         _agentService = agentService;
+        _ocrService = ocrService;
     }
 
     /// <summary>历史条目（当前筛选下）。</summary>
@@ -287,4 +296,55 @@ public sealed class ClipboardHistoryViewModel
 
     /// <summary>用于右键菜单构建“切换分组”子项的分组快照。</summary>
     public IReadOnlyList<ClipboardGroup> GetGroupsSnapshot() => _repository.GetGroups();
+
+    /// <summary>
+    /// 对图片类型的剪贴板条目执行 OCR 识别。调用方应在 UI 线程调用。
+    /// </summary>
+    public async Task<OcrResult> RecognizeTextAsync(ClipboardItemViewModel vm, CancellationToken cancellationToken = default)
+    {
+        if (vm.Model.Kind != ClipboardItemKind.Image || string.IsNullOrWhiteSpace(vm.Model.ImagePath) || !File.Exists(vm.Model.ImagePath))
+        {
+            return OcrResult.Failure("该条目不是可用的图片");
+        }
+
+        return await _ocrService.RecognizeAsync(vm.Model.ImagePath, cancellationToken);
+    }
+
+    /// <summary>将 OCR 识别出的文本保存为一条新的剪贴板历史文本记录。</summary>
+    public void SaveOcrResultAsHistory(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+
+        var item = new ClipboardItem(
+            0,
+            ClipboardItemKind.Text,
+            BuildOcrPreview(text),
+            text,
+            ImagePath: null,
+            Files: null,
+            GroupId: null,
+            Pinned: false,
+            SourceAppName: "OCR 识别",
+            SourceProcessPath: string.Empty,
+            Hash: ComputeOcrHash(text),
+            CreatedUtc: DateTime.UtcNow);
+
+        _repository.Add(item);
+    }
+
+    private static string BuildOcrPreview(string text)
+    {
+        var single = text.Replace('\r', ' ').Replace('\n', ' ').Trim();
+        const int maxLength = 200;
+        return single.Length > maxLength ? single[..maxLength] + "…" : single;
+    }
+
+    private static string ComputeOcrHash(string text)
+    {
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes("text:" + text));
+        return Convert.ToHexString(hash).ToLowerInvariant();
+    }
 }

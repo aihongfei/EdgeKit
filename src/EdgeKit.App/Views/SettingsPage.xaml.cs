@@ -104,6 +104,8 @@ public sealed partial class SettingsPage : Page
         TrackRecentToolsSwitch.IsOn = _settings.TrackRecentTools;
         RecentToolsVisibleRowsBox.Value = _settings.RecentToolsVisibleRows;
         ShowHomeClipboardHistorySwitch.IsOn = _settings.ShowHomeClipboardHistory;
+        ShowDailyQuoteSwitch.IsOn = _settings.ShowDailyQuote;
+        SelectDailyQuoteCategory(_settings.DailyQuoteCategory);
         QuickLaunchVisibleRowsBox.Value = _settings.QuickLaunchVisibleRows;
         YoudaoAppKeyBox.Password = string.Empty;
         YoudaoAppKeyHintText.Text = string.IsNullOrWhiteSpace(_settings.YoudaoAppKeyPreview)
@@ -547,6 +549,50 @@ public sealed partial class SettingsPage : Page
 
         _settings.ShowHomeClipboardHistory = ShowHomeClipboardHistorySwitch.IsOn;
         _settings.Save();
+    }
+
+    private void OnShowDailyQuoteToggled(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        if (_loading || _settings is null)
+        {
+            return;
+        }
+
+        _settings.ShowDailyQuote = ShowDailyQuoteSwitch.IsOn;
+        _settings.Save();
+    }
+
+    private void OnDailyQuoteCategoryChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loading || _settings is null)
+        {
+            return;
+        }
+
+        _settings.DailyQuoteCategory = GetSelectedDailyQuoteCategory();
+        _settings.Save();
+    }
+
+    private void SelectDailyQuoteCategory(string category)
+    {
+        var tag = string.IsNullOrWhiteSpace(category) ? "all" : category.Trim().ToLowerInvariant();
+
+        foreach (var item in DailyQuoteCategoryBox.Items.OfType<ComboBoxItem>())
+        {
+            if ((item.Tag as string) == tag)
+            {
+                DailyQuoteCategoryBox.SelectedItem = item;
+                return;
+            }
+        }
+
+        DailyQuoteCategoryBox.SelectedIndex = 0;
+    }
+
+    private string GetSelectedDailyQuoteCategory()
+    {
+        var tag = (DailyQuoteCategoryBox.SelectedItem as ComboBoxItem)?.Tag as string;
+        return string.IsNullOrWhiteSpace(tag) ? "all" : tag.Trim().ToLowerInvariant();
     }
 
     private void OnQuickLaunchVisibleRowsChanged(NumberBox sender, NumberBoxValueChangedEventArgs args)

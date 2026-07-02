@@ -21,6 +21,9 @@ public sealed class ToolCatalog : IToolCatalog
         // 待办任务
         new("task.board", "待办任务", "\uE7C3", ToolCategory.Tasks, 0, "按状态筛选，按时间分组管理任务"),
 
+        // 便签
+        new("notes.sticky", "桌面便签", "\uE70B", ToolCategory.Notes, 0, "创建与管理独立桌面便签窗口"),
+
         // 命令面板
         new("command.palette", "命令面板", "\uE756", ToolCategory.Command, 0, "快速搜索并执行系统命令"),
 
@@ -38,6 +41,7 @@ public sealed class ToolCatalog : IToolCatalog
 
         // 图片工具
         new("image.convert", "图片转换", "\uEB9F", ToolCategory.Image, 0, "格式转换与压缩"),
+        new("image.ocr", "图片识别文字", "\uE8D4", ToolCategory.Image, 1, "识别图片中的文字内容"),
 
         // 系统工具
         new("system.tools", "系统工具", "\uE770", ToolCategory.System, 0, "网络、端口、Hosts、环境变量、窗口管理"),

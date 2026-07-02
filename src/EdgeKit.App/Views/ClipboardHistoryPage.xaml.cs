@@ -1,10 +1,12 @@
 using System;
 using EdgeKit.App.ViewModels;
+using EdgeKit.Core.Clipboard;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Navigation;
+using Windows.ApplicationModel.DataTransfer;
 
 namespace EdgeKit.App.Views;
 
@@ -296,6 +298,18 @@ public sealed partial class ClipboardHistoryPage : Page
         delete.Click += (_, _) => _viewModel.Delete(item);
         flyout.Items.Add(delete);
 
+        // 图片条目支持 OCR 识别文字。
+        if (item.Model.Kind == ClipboardItemKind.Image)
+        {
+            var recognize = new MenuFlyoutItem
+            {
+                Text = "识别文字",
+                Icon = new FontIcon { Glyph = "\uE8D4" }
+            };
+            recognize.Click += async (_, _) => await RecognizeImageTextAsync(item);
+            flyout.Items.Add(recognize);
+        }
+
         flyout.Items.Add(new MenuFlyoutSeparator());
 
         // 切换分组子菜单：列出所有分组 + 移出分组。
@@ -568,5 +582,71 @@ public sealed partial class ClipboardHistoryPage : Page
         var startUtc = startLocal.DateTime.ToUniversalTime();
         var endUtc = endLocal.DateTime.AddDays(1).AddTicks(-1).ToUniversalTime();
         return (startUtc, endUtc);
+    }
+
+    /// <summary>对图片剪贴板条目执行 OCR，并在识别完成后显示结果对话框。</summary>
+    private async System.Threading.Tasks.Task RecognizeImageTextAsync(ClipboardItemViewModel item)
+    {
+        if (_viewModel is null)
+        {
+            return;
+        }
+
+        ShowCopyToast("正在识别文字…", success: true);
+        try
+        {
+            var result = await _viewModel.RecognizeTextAsync(item);
+            if (!result.IsSuccess)
+            {
+                ShowCopyToast(result.Message, success: false);
+                return;
+            }
+
+            await ShowOcrResultDialogAsync(result.Text);
+        }
+        catch (Exception ex)
+        {
+            ShowCopyToast("识别失败: " + ex.Message, success: false);
+        }
+    }
+
+    /// <summary>显示 OCR 结果对话框，提供复制到剪贴板和保存到历史两个操作。</summary>
+    private async System.Threading.Tasks.Task ShowOcrResultDialogAsync(string text)
+    {
+        var textBox = new TextBox
+        {
+            Text = text,
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap,
+            IsReadOnly = true,
+            Height = 240
+        };
+        ScrollViewer.SetVerticalScrollBarVisibility(textBox, ScrollBarVisibility.Auto);
+
+        var dialog = new ContentDialog
+        {
+            Title = "识别结果",
+            Content = textBox,
+            PrimaryButtonText = "复制",
+            SecondaryButtonText = "保存到历史",
+            CloseButtonText = "关闭",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = XamlRoot,
+            RequestedTheme = ElementTheme.Dark
+        };
+
+        var result = await dialog.ShowAsync();
+        if (result == ContentDialogResult.Primary)
+        {
+            var package = new DataPackage { RequestedOperation = DataPackageOperation.Copy };
+            package.SetText(text);
+            Clipboard.SetContent(package);
+            ShowCopyToast("已复制到剪贴板", success: true);
+        }
+        else if (result == ContentDialogResult.Secondary)
+        {
+            _viewModel?.SaveOcrResultAsHistory(text);
+            ShowCopyToast("已保存到剪贴板历史", success: true);
+        }
     }
 }

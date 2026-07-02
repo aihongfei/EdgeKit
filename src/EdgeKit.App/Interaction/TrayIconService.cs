@@ -8,27 +8,26 @@ namespace EdgeKit.App.Interaction;
 
 /// <summary>
 /// 基于 Win32 Shell_NotifyIcon 的系统托盘入口。独立 message-only window 接收托盘消息。
+/// 右键菜单现在由调用方通过 <see cref="ShowMenuAction"/> 自行渲染（XAML 弹出窗口）。
 /// </summary>
 public sealed class TrayIconService : IDisposable
 {
     private const uint TrayCallbackMessage = NativeMethods.WM_USER + 0x423;
     private const uint TrayIconId = 1;
-    private const uint ShowCommandId = 1001;
-    private const uint ExitCommandId = 1002;
     private static readonly nint HwndMessage = new(-3);
 
-    private readonly Action _showAction;
-    private readonly Action _exitAction;
+    private readonly Action _defaultAction;
+    private readonly Action _showMenuAction;
     private readonly NativeMethods.WndProcDelegate _wndProc;
     private readonly string _className;
     private nint _messageHwnd;
     private nint _iconHandle;
     private bool _disposed;
 
-    public TrayIconService(string iconPath, Action showAction, Action exitAction)
+    public TrayIconService(string iconPath, Action defaultAction, Action showMenuAction)
     {
-        _showAction = showAction;
-        _exitAction = exitAction;
+        _defaultAction = defaultAction;
+        _showMenuAction = showMenuAction;
         _wndProc = WndProc;
         _className = "EdgeKitTrayWindow_" + Guid.NewGuid().ToString("N");
 
@@ -115,63 +114,21 @@ public sealed class TrayIconService : IDisposable
             var mouseMessage = unchecked((uint)lParam.ToInt64());
             if (mouseMessage == NativeMethods.WM_RBUTTONUP)
             {
-                ShowContextMenu();
+                // 将托盘消息窗口设为前台，以保留本进程调用 SetForegroundWindow 的权限，
+                // 否则后续弹出的 XAML 菜单可能无法真正获得焦点，导致失焦关闭失效。
+                NativeMethods.SetForegroundWindow(_messageHwnd);
+                _showMenuAction();
                 return nint.Zero;
             }
 
             if (mouseMessage == NativeMethods.WM_LBUTTONDBLCLK)
             {
-                _showAction();
+                _defaultAction();
                 return nint.Zero;
             }
         }
 
         return NativeMethods.DefWindowProc(hwnd, msg, wParam, lParam);
-    }
-
-    private void ShowContextMenu()
-    {
-        if (!NativeMethods.GetCursorPos(out var point))
-        {
-            return;
-        }
-
-        var menu = NativeMethods.CreatePopupMenu();
-        if (menu == nint.Zero)
-        {
-            return;
-        }
-
-        try
-        {
-            NativeMethods.AppendMenu(menu, NativeMethods.MF_STRING, ShowCommandId, "显示 EdgeKit");
-            NativeMethods.AppendMenu(menu, NativeMethods.MF_SEPARATOR, 0, null);
-            NativeMethods.AppendMenu(menu, NativeMethods.MF_STRING, ExitCommandId, "退出");
-
-            NativeMethods.SetForegroundWindow(_messageHwnd);
-            var command = NativeMethods.TrackPopupMenu(
-                menu,
-                NativeMethods.TPM_RETURNCMD | NativeMethods.TPM_RIGHTBUTTON,
-                point.X,
-                point.Y,
-                0,
-                _messageHwnd,
-                nint.Zero);
-            NativeMethods.PostMessage(_messageHwnd, NativeMethods.WM_NULL, nint.Zero, nint.Zero);
-
-            if (command == ShowCommandId)
-            {
-                _showAction();
-            }
-            else if (command == ExitCommandId)
-            {
-                _exitAction();
-            }
-        }
-        finally
-        {
-            NativeMethods.DestroyMenu(menu);
-        }
     }
 
     public void Dispose()

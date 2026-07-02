@@ -1,0 +1,140 @@
+[
+  {
+    "content": "落霞与孤鹜齐飞，秋水共长天一色。",
+    "author": "王勃",
+    "source": "滕王阁序",
+    "category": "poem"
+  },
+  {
+    "content": "大漠孤烟直，长河落日圆。",
+    "author": "王维",
+    "source": "使至塞上",
+    "category": "poem"
+  },
+  {
+    "content": "长风破浪会有时，直挂云帆济沧海。",
+    "author": "李白",
+    "source": "行路难",
+    "category": "poem"
+  },
+  {
+    "content": "山重水复疑无路，柳暗花明又一村。",
+    "author": "陆游",
+    "source": "游山西村",
+    "category": "poem"
+  },
+  {
+    "content": "采菊东篱下，悠然见南山。",
+    "author": "陶渊明",
+    "source": "饮酒·其五",
+    "category": "poem"
+  },
+  {
+    "content": "海内存知己，天涯若比邻。",
+    "author": "王勃",
+    "source": "送杜少府之任蜀州",
+    "category": "poem"
+  },
+  {
+    "content": "问渠那得清如许？为有源头活水来。",
+    "author": "朱熹",
+    "source": "观书有感",
+    "category": "poem"
+  },
+  {
+    "content": "人生如逆旅，我亦是行人。",
+    "author": "苏轼",
+    "source": "临江仙",
+    "category": "poem"
+  },
+  {
+    "content": "千磨万击还坚劲，任尔东西南北风。",
+    "author": "郑燮",
+    "source": "竹石",
+    "category": "poem"
+  },
+  {
+    "content": "不积跬步，无以至千里；不积小流，无以成江海。",
+    "author": "荀子",
+    "source": "劝学",
+    "category": "quote"
+  },
+  {
+    "content": "千里之行，始于足下。",
+    "author": "老子",
+    "source": "道德经",
+    "category": "quote"
+  },
+  {
+    "content": "博学之，审问之，慎思之，明辨之，笃行之。",
+    "author": "礼记",
+    "source": "中庸",
+    "category": "quote"
+  },
+  {
+    "content": "纸上得来终觉浅，绝知此事要躬行。",
+    "author": "陆游",
+    "source": "冬夜读书示子聿",
+    "category": "quote"
+  },
+  {
+    "content": "Stay hungry, stay foolish.",
+    "author": "Steve Jobs",
+    "source": "Stanford Commencement 2005",
+    "category": "quote"
+  },
+  {
+    "content": "Talk is cheap. Show me the code.",
+    "author": "Linus Torvalds",
+    "source": "",
+    "category": "dev"
+  },
+  {
+    "content": "Programs must be written for people to read, and only incidentally for machines to execute.",
+    "author": "Harold Abelson",
+    "source": "SICP",
+    "category": "dev"
+  },
+  {
+    "content": "Premature optimization is the root of all evil.",
+    "author": "Donald Knuth",
+    "source": "Structured Programming with go to Statements",
+    "category": "dev"
+  },
+  {
+    "content": "代码是写给人看的，只是顺便让机器执行。",
+    "author": "Harold Abelson",
+    "source": "SICP",
+    "category": "dev"
+  },
+  {
+    "content": "简单是可靠的先决条件。",
+    "author": "Edsger W. Dijkstra",
+    "source": "",
+    "category": "dev"
+  },
+  {
+    "content": "任何足够先进的技术，都与魔法无异。",
+    "author": "Arthur C. Clarke",
+    "source": "Clarke's Third Law",
+    "category": "quote"
+  },
+  {
+    "content": "种一棵树最好的时间是十年前，其次是现在。",
+    "author": "Dambisa Moyo",
+    "source": "Dead Aid",
+    "category": "quote"
+  },
+  {
+    "content": "苔花如米小，也学牡丹开。",
+    "author": "袁枚",
+    "source": "苔",
+    "category": "poem"
+  },
+  {
+    "content": "知之者不如好之者，好之者不如乐之者。",
+    "author": "孔子",
+    "source": "论语",
+    "category": "quote"
+  }
+]

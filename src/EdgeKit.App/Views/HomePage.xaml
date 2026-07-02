@@ -315,6 +315,38 @@
             <TextBlock Text="首页" FontSize="22" FontWeight="SemiBold"
                        Foreground="{ThemeResource EdgeTextBrush}" />
 
+            <!-- 每日一言 -->
+            <StackPanel x:Name="DailyQuoteSection" Spacing="8">
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" Spacing="4">
+                        <TextBlock x:Name="DailyQuoteText"
+                                  FontSize="16" FontWeight="SemiLight"
+                                  Foreground="{ThemeResource EdgeTextBrush}"
+                                  TextWrapping="Wrap" />
+                        <TextBlock x:Name="DailyQuoteAttribution"
+                                  FontSize="12"
+                                  Foreground="{ThemeResource EdgeMutedBrush}"
+                                  TextTrimming="CharacterEllipsis" MaxLines="1" />
+                    </StackPanel>
+
+                    <Button x:Name="RefreshDailyQuoteButton"
+                             Grid.Column="1"
+                             Content="换一句"
+                             Height="32"
+                             VerticalAlignment="Top"
+                             Click="OnRefreshDailyQuoteClick" />
+                </Grid>
+
+                <Border Height="1"
+                        Background="{ThemeResource EdgeLineBrush}"
+                        Opacity="0.5" />
+            </StackPanel>
+
             <!-- 最近使用（操作历史，从数据库读取） -->
             <StackPanel Spacing="8">
                 <TextBlock Text="最近使用" FontSize="14" FontWeight="SemiBold"

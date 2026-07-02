@@ -97,6 +97,18 @@ public static class NativeMethods
 
     public const int GWLP_WNDPROC = -4;
     public const uint WM_NCCALCSIZE = 0x0083;
+    public const uint WM_NCHITTEST = 0x0084;
+
+    // WM_NCHITTEST 返回值：边框/四角拖拽调整大小。
+    public const int HTLEFT = 10;
+    public const int HTRIGHT = 11;
+    public const int HTTOP = 12;
+    public const int HTTOPLEFT = 13;
+    public const int HTTOPRIGHT = 14;
+    public const int HTBOTTOM = 15;
+    public const int HTBOTTOMLEFT = 16;
+    public const int HTBOTTOMRIGHT = 17;
+
     public const uint WM_USER = 0x0400;
     public const uint WM_COMMAND = 0x0111;
     public const uint WM_HOTKEY = 0x0312;

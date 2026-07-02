@@ -78,5 +78,5 @@ internal static class ToolNavigationBuilder
     }
 
     private static bool ShouldRenderAsTopLevel(ToolCategory category)
-        => category is ToolCategory.Home or ToolCategory.Clipboard or ToolCategory.Command or ToolCategory.Agent or ToolCategory.Translation or ToolCategory.Text or ToolCategory.Image or ToolCategory.Tasks or ToolCategory.Settings;
+        => category is ToolCategory.Home or ToolCategory.Clipboard or ToolCategory.Command or ToolCategory.Agent or ToolCategory.Translation or ToolCategory.Text or ToolCategory.Tasks or ToolCategory.Notes or ToolCategory.Settings;
 }

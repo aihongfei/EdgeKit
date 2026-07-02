@@ -38,13 +38,27 @@ internal sealed class AcrylicBackdropController
         {
             TintColor = Color.FromArgb(255, 32, 32, 36),
             LuminosityOpacity = 0.55f,
-            TintOpacity = 0.35f,
+            TintOpacity = 0.55f,
             FallbackColor = Color.FromArgb(255, 32, 32, 36)
         };
 
         _acrylicController.SetSystemBackdropConfiguration(_backdropConfig);
         _acrylicController.AddSystemBackdropTarget(
             window.As<ICompositionSupportsSystemBackdrop>());
+    }
+
+    /// <summary>
+    /// 动态修改 Acrylic 染色色。便签窗口用此把便签颜色融合到半透明背景上。
+    /// </summary>
+    public void SetTintColor(Color color)
+    {
+        if (_acrylicController is null)
+        {
+            return;
+        }
+
+        _acrylicController.TintColor = color;
+        _acrylicController.FallbackColor = color;
     }
 
     public void Dispose()

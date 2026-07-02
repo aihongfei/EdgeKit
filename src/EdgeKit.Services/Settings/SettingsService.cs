@@ -132,6 +132,20 @@ public sealed class SettingsService : ISettingsService
         set => SetField(ref _quickLaunchVisibleRows, ClampQuickLaunchVisibleRows(value));
     }
 
+    private bool _showDailyQuote = true;
+    public bool ShowDailyQuote
+    {
+        get => _showDailyQuote;
+        set => SetField(ref _showDailyQuote, value);
+    }
+
+    private string _dailyQuoteCategory = "all";
+    public string DailyQuoteCategory
+    {
+        get => _dailyQuoteCategory;
+        set => SetField(ref _dailyQuoteCategory, string.IsNullOrWhiteSpace(value) ? "all" : value.Trim().ToLowerInvariant());
+    }
+
     private bool _aiEnabled;
     public bool AiEnabled
     {
@@ -340,6 +354,10 @@ public sealed class SettingsService : ISettingsService
             _showHomeClipboardHistory);
         _quickLaunchVisibleRows = ClampQuickLaunchVisibleRows(
             GetInt(values, nameof(QuickLaunchVisibleRows), _quickLaunchVisibleRows));
+        _showDailyQuote = GetBool(values, nameof(ShowDailyQuote), _showDailyQuote);
+        _dailyQuoteCategory = string.IsNullOrWhiteSpace(GetString(values, nameof(DailyQuoteCategory), _dailyQuoteCategory))
+            ? "all"
+            : GetString(values, nameof(DailyQuoteCategory), _dailyQuoteCategory).Trim().ToLowerInvariant();
         _aiEnabled = GetBool(values, nameof(AiEnabled), _aiEnabled);
         _aiBaseUrl = NormalizeBaseUrl(GetString(values, nameof(AiBaseUrl), _aiBaseUrl));
         _aiModel = NormalizeModel(GetString(values, nameof(AiModel), _aiModel));
@@ -388,6 +406,8 @@ public sealed class SettingsService : ISettingsService
         _store.Set(nameof(RecentToolsVisibleRows), _recentToolsVisibleRows.ToString(CultureInfo.InvariantCulture));
         _store.Set(nameof(ShowHomeClipboardHistory), _showHomeClipboardHistory ? "1" : "0");
         _store.Set(nameof(QuickLaunchVisibleRows), _quickLaunchVisibleRows.ToString(CultureInfo.InvariantCulture));
+        _store.Set(nameof(ShowDailyQuote), _showDailyQuote ? "1" : "0");
+        _store.Set(nameof(DailyQuoteCategory), _dailyQuoteCategory);
         _store.Set(nameof(AiEnabled), _aiEnabled ? "1" : "0");
         _store.Set(nameof(AiBaseUrl), _aiBaseUrl);
         _store.Set(nameof(AiModel), _aiModel);

@@ -4,6 +4,7 @@ using EdgeKit.App.ViewModels;
 using EdgeKit.App.Interaction;
 using EdgeKit.Core.QuickLaunch;
 using EdgeKit.Core.Recent;
+using EdgeKit.Services.Quotes;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -141,6 +142,11 @@ public sealed partial class HomePage : Page
             ? Microsoft.UI.Xaml.Visibility.Collapsed
             : Microsoft.UI.Xaml.Visibility.Visible;
 
+        DailyQuoteSection.Visibility = _viewModel.ShowDailyQuote
+            ? Microsoft.UI.Xaml.Visibility.Visible
+            : Microsoft.UI.Xaml.Visibility.Collapsed;
+        UpdateDailyQuote();
+
         QuickLaunchGrid.MaxHeight = Math.Max(
             QuickLaunchTileHeight,
             _viewModel.QuickLaunchVisibleRows * QuickLaunchTileHeight);
@@ -148,6 +154,33 @@ public sealed partial class HomePage : Page
         ToolsList.MaxHeight = Math.Max(
             RecentToolsTileHeight,
             _viewModel.RecentToolsVisibleRows * RecentToolsTileHeight);
+    }
+
+    private void UpdateDailyQuote()
+    {
+        if (_viewModel is null || !_viewModel.ShowDailyQuote)
+        {
+            return;
+        }
+
+        var quote = _viewModel.DailyQuote;
+        if (quote is null)
+        {
+            DailyQuoteText.Text = string.Empty;
+            DailyQuoteAttribution.Text = string.Empty;
+            return;
+        }
+
+        DailyQuoteText.Text = quote.Content;
+        DailyQuoteAttribution.Text = string.IsNullOrWhiteSpace(quote.AttributionText)
+            ? $"— {quote.CategoryDisplayName}"
+            : $"— {quote.AttributionText}";
+    }
+
+    private void OnRefreshDailyQuoteClick(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        _viewModel?.RefreshDailyQuote();
+        UpdateDailyQuote();
     }
 
     private void OnQuickLaunchItemClick(object sender, ItemClickEventArgs e)

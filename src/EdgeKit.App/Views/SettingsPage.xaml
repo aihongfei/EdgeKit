@@ -295,6 +295,43 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                    <TextBlock Text="首页展示每日一言" Foreground="{ThemeResource EdgeTextBrush}" />
+                    <TextBlock Text="在首页顶部展示一句诗词或格言"
+                               FontSize="12" Foreground="{ThemeResource EdgeMutedBrush}"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+                <ToggleSwitch x:Name="ShowDailyQuoteSwitch" Grid.Column="1"
+                              VerticalAlignment="Center"
+                              Toggled="OnShowDailyQuoteToggled" />
+            </Grid>
+
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                    <TextBlock Text="每日一言分类" Foreground="{ThemeResource EdgeTextBrush}" />
+                    <TextBlock Text="选择展示内容的偏好分类"
+                               FontSize="12" Foreground="{ThemeResource EdgeMutedBrush}"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+                <ComboBox x:Name="DailyQuoteCategoryBox" Grid.Column="1"
+                          Width="190" Height="36" VerticalAlignment="Center"
+                          SelectionChanged="OnDailyQuoteCategoryChanged">
+                    <ComboBoxItem Content="全部" Tag="all" />
+                    <ComboBoxItem Content="诗词" Tag="poem" />
+                    <ComboBoxItem Content="格言" Tag="quote" />
+                    <ComboBoxItem Content="程序员" Tag="dev" />
+                </ComboBox>
+            </Grid>
+
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" VerticalAlignment="Center">
                     <TextBlock Text="快速启动显示行数" Foreground="{ThemeResource EdgeTextBrush}" />
                     <TextBlock Text="控制首页快速启动区可见行数，超出后可上下滚动（1-4）"
                                FontSize="12" Foreground="{ThemeResource EdgeMutedBrush}"

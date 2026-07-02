@@ -73,6 +73,12 @@ public interface ISettingsService
     /// <summary>首页快速启动区可见行数。</summary>
     int QuickLaunchVisibleRows { get; set; }
 
+    /// <summary>首页是否展示每日一言。</summary>
+    bool ShowDailyQuote { get; set; }
+
+    /// <summary>每日一言分类（如 all、poem、quote、dev）。</summary>
+    string DailyQuoteCategory { get; set; }
+
     bool AiEnabled { get; set; }
 
     string AiBaseUrl { get; set; }

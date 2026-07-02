@@ -1,11 +1,13 @@
-﻿using System;
+using System;
 using EdgeKit.App.Commands;
 using EdgeKit.App.Interaction;
 using EdgeKit.App.Notifications;
+using EdgeKit.App.Notes;
 using EdgeKit.App.ViewModels;
 using EdgeKit.App.Windows;
 using EdgeKit.Core.Agent;
 using EdgeKit.Core.Commands;
+using EdgeKit.Core.Notes;
 using EdgeKit.Core.QuickLaunch;
 using EdgeKit.Core.Recent;
 using EdgeKit.Core.Services;
@@ -14,6 +16,7 @@ using EdgeKit.Core.Tasks;
 using EdgeKit.Core.Tools;
 using EdgeKit.Data.Agent;
 using EdgeKit.Data.Commands;
+using EdgeKit.Data.Notes;
 using EdgeKit.Data.QuickLaunch;
 using EdgeKit.Data.Recent;
 using EdgeKit.Data.Settings;
@@ -22,6 +25,8 @@ using EdgeKit.Services.Agent;
 using EdgeKit.Services.Settings;
 using EdgeKit.Services.Diagnostics;
 using EdgeKit.Services.Images;
+using EdgeKit.Services.Ocr;
+using EdgeKit.Services.Quotes;
 using EdgeKit.Services.SystemOperations;
 using EdgeKit.Services.Tasks;
 using EdgeKit.Services.Text;
@@ -40,6 +45,7 @@ public partial class App : Application
 {
     private Window? _drawerWindow;
     private TrayIconService? _trayIcon;
+    private TrayMenuWindow? _trayMenuWindow;
     private GlobalHotkeyService? _globalHotkey;
     private TaskReminderService? _taskReminderService;
     private bool _isExiting;
@@ -114,16 +120,49 @@ public partial class App : Application
         var agentService = Services.GetRequiredService<IAgentService>();
         var taskBoardViewModel = Services.GetRequiredService<TaskBoardViewModel>();
         var systemDashboardViewModel = Services.GetRequiredService<SystemDashboardViewModel>();
+        var ocrService = Services.GetRequiredService<IOcrService>();
+        var clipboardRepository = Services.GetRequiredService<EdgeKit.Core.Clipboard.IClipboardRepository>();
+        var stickyNoteManagerService = Services.GetRequiredService<StickyNoteManagerService>();
+        var stickyNotesViewModel = Services.GetRequiredService<StickyNotesViewModel>();
         _taskReminderService = Services.GetRequiredService<TaskReminderService>();
         _taskReminderService.Start();
-        var drawerWindow = new DrawerWindow(settings, shellViewModel, recentItems, quickLaunchItems, quickLaunchActions, homeViewModel, windowMonitor, searchCoordinator, appIndex, commandRegistry, commandExecutor, customCommands, clipboardService, clipboardViewModel, systemDiagnostics, hostsFileService, environmentVariables, windowManagement, fileLocks, imageTools, textTools, youdaoService, agentService, taskBoardViewModel, systemDashboardViewModel);
+        var drawerWindow = new DrawerWindow(settings, shellViewModel, recentItems, quickLaunchItems, quickLaunchActions, homeViewModel, windowMonitor, searchCoordinator, appIndex, commandRegistry, commandExecutor, customCommands, clipboardService, clipboardViewModel, systemDiagnostics, hostsFileService, environmentVariables, windowManagement, fileLocks, imageTools, textTools, youdaoService, agentService, taskBoardViewModel, systemDashboardViewModel, ocrService, clipboardRepository, stickyNoteManagerService, stickyNotesViewModel);
         drawerWindow.Closed += OnDrawerWindowClosed;
         _drawerWindow = drawerWindow;
 
+        var menuItems = new[]
+        {
+            TrayMenuItem.Command(1001, "显示 EdgeKit", "\uE80F", () => RunOnUi(drawerWindow.ShowDrawer)),
+            TrayMenuItem.Command(1002, "搜索", "\uE721", () => RunOnUi(drawerWindow.ShowDrawerAndFocusSearch)),
+            TrayMenuItem.Separator(),
+            TrayMenuItem.Command(1003, "剪贴板历史", "\uE8C8", () => ShowTool("clipboard.history")),
+            TrayMenuItem.Command(1004, "图片识别文字", "\uE8D4", () => ShowTool("image.ocr")),
+            TrayMenuItem.Separator(),
+            TrayMenuItem.Command(1005, "新建便签", "\uE70B", () => RunOnUi(() => stickyNoteManagerService.CreateNew())),
+            TrayMenuItem.Command(1006, "便签管理", "\uE8A9", () => ShowTool("notes.sticky")),
+            TrayMenuItem.Separator(),
+            TrayMenuItem.Command(1007, "设置", "\uE713", () => ShowTool("settings.center")),
+            TrayMenuItem.Command(1008, "退出", "\uE7E8", () => RunOnUi(ExitApplication))
+        };
+
         _trayIcon = new TrayIconService(
             GetTrayIconPath(),
-            () => drawerWindow.DispatcherQueue.TryEnqueue(drawerWindow.ShowDrawer),
-            () => drawerWindow.DispatcherQueue.TryEnqueue(ExitApplication));
+            () => RunOnUi(drawerWindow.ShowDrawer),
+            () => RunOnUi(() => ShowTrayMenu(menuItems)));
+
+        void RunOnUi(Action action)
+            => drawerWindow.DispatcherQueue.TryEnqueue(() => action());
+
+        void ShowTool(string toolId)
+            => RunOnUi(() => drawerWindow.ShowTool(toolId));
+
+        void ShowTrayMenu(IReadOnlyList<TrayMenuItem> items)
+        {
+            _trayMenuWindow?.Close();
+            _trayMenuWindow = new TrayMenuWindow(items);
+            _trayMenuWindow.Closed += (_, _) => _trayMenuWindow = null;
+            _trayMenuWindow.ShowAndActivate();
+        }
 
         _globalHotkey = new GlobalHotkeyService(
             settings,
@@ -144,6 +183,8 @@ public partial class App : Application
         GlobalHotkey = null;
         _taskReminderService?.Dispose();
         _taskReminderService = null;
+        _trayMenuWindow?.Close();
+        _trayMenuWindow = null;
         _trayIcon?.Dispose();
         _trayIcon = null;
         _drawerWindow?.Close();
@@ -152,6 +193,8 @@ public partial class App : Application
 
     private void OnDrawerWindowClosed(object sender, WindowEventArgs args)
     {
+        _trayMenuWindow?.Close();
+        _trayMenuWindow = null;
         _trayIcon?.Dispose();
         _trayIcon = null;
         _globalHotkey?.Dispose();
@@ -217,6 +260,7 @@ public partial class App : Application
         services.AddSingleton<ICustomCommandRepository>(_ => new SqliteCustomCommandRepository(dbPath));
         services.AddSingleton<IAgentRepository>(_ => new SqliteAgentRepository(dbPath));
         services.AddSingleton<ITaskBoardRepository>(_ => new SqliteTaskBoardRepository(dbPath));
+        services.AddSingleton<IStickyNoteRepository>(_ => new SqliteStickyNoteRepository(dbPath));
 
         var clipboardImageDir = System.IO.Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -248,6 +292,8 @@ public partial class App : Application
         services.AddSingleton<WindowManagementService>();
         services.AddSingleton<FileLockService>();
         services.AddSingleton<ImageProcessingService>();
+        services.AddSingleton<IOcrService, OcrService>();
+        services.AddSingleton<DailyQuoteService>();
         services.AddSingleton<TextProcessingService>();
         services.AddSingleton<YoudaoTranslationService>();
         services.AddSingleton(new HttpClient
@@ -275,6 +321,8 @@ public partial class App : Application
         services.AddTransient<ClipboardHistoryViewModel>();
         services.AddTransient<TaskBoardViewModel>();
         services.AddTransient<SystemDashboardViewModel>();
+        services.AddSingleton<StickyNoteManagerService>();
+        services.AddTransient<StickyNotesViewModel>();
 
         return services.BuildServiceProvider();
     }

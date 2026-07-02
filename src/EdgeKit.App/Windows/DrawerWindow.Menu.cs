@@ -9,6 +9,35 @@ namespace EdgeKit.App.Windows;
 /// <summary>DrawerWindow 侧边菜单构建、选中路由与展开/收缩同步。</summary>
 public sealed partial class DrawerWindow
 {
+    public void ShowTool(string toolId)
+    {
+        ShowDrawer();
+
+        var visibleToolId = GetVisibleToolId(toolId);
+        foreach (var pair in _menuItemTools)
+        {
+            if (pair.Value != visibleToolId)
+            {
+                continue;
+            }
+
+            var wasSelected = ReferenceEquals(ToolNav.SelectedItem, pair.Key);
+            if (!wasSelected)
+            {
+                ToolNav.SelectedItem = pair.Key;
+            }
+
+            if (wasSelected || visibleToolId != toolId)
+            {
+                NavigateToTool(toolId, recordRecent: true);
+            }
+
+            return;
+        }
+
+        NavigateToTool(toolId, recordRecent: true);
+    }
+
     /// <summary>
     /// 根据工具注册表动态构建侧边菜单。委托给 <see cref="ToolNavigationBuilder"/>，
     /// 加工具只需在 ToolCatalog 注册，无需改此处代码。
@@ -90,6 +119,10 @@ public sealed partial class DrawerWindow
         {
             ContentFrame.Navigate(typeof(TaskBoardPage), new TaskBoardPageParameter(_taskBoardViewModel));
         }
+        else if (toolId == "notes.sticky")
+        {
+            ContentFrame.Navigate(typeof(StickyNotesPage), new StickyNotesPageParameter(_stickyNotesViewModel));
+        }
         else if (toolId == "system.dashboard")
         {
             ContentFrame.Navigate(typeof(SystemDashboardPage), new SystemDashboardPageParameter(_systemDashboardViewModel));
@@ -105,6 +138,10 @@ public sealed partial class DrawerWindow
         else if (toolId == "image.convert")
         {
             ContentFrame.Navigate(typeof(ImageConvertPage), new ImageConvertPageParameter(_imageTools, _hwnd));
+        }
+        else if (toolId == "image.ocr")
+        {
+            ContentFrame.Navigate(typeof(ImageOcrPage), new ImageOcrPageParameter(_ocrService, _clipboardRepository, _hwnd));
         }
         else if (tool.Category == ToolCategory.System)
         {
@@ -148,6 +185,7 @@ public sealed partial class DrawerWindow
 
     private static string GetVisibleToolId(string toolId)
         => toolId is "text.encode" or "json.format" or "json.tree" ? "text.tools"
+            : toolId is "image.ocr" ? "image.convert"
             : toolId;
 
     private void OnPaneOpening(NavigationView sender, object args)
