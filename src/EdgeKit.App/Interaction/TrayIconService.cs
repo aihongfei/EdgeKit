@@ -14,12 +14,13 @@ public sealed class TrayIconService : IDisposable
 {
     private const uint TrayCallbackMessage = NativeMethods.WM_USER + 0x423;
     private const uint TrayIconId = 1;
+    private const string TrayWindowClassName = "EdgeKitTrayWindow";
     private static readonly nint HwndMessage = new(-3);
+    private static readonly Guid TrayIconGuid = new("7e2cc90f-23b8-43d8-bd68-a5c8d90bb5da");
 
     private readonly Action _defaultAction;
     private readonly Action _showMenuAction;
     private readonly NativeMethods.WndProcDelegate _wndProc;
-    private readonly string _className;
     private nint _messageHwnd;
     private nint _iconHandle;
     private bool _disposed;
@@ -29,7 +30,6 @@ public sealed class TrayIconService : IDisposable
         _defaultAction = defaultAction;
         _showMenuAction = showMenuAction;
         _wndProc = WndProc;
-        _className = "EdgeKitTrayWindow_" + Guid.NewGuid().ToString("N");
 
         CreateMessageWindow();
         AddTrayIcon(iconPath);
@@ -43,7 +43,7 @@ public sealed class TrayIconService : IDisposable
             cbSize = (uint)Marshal.SizeOf<NativeMethods.WNDCLASSEX>(),
             lpfnWndProc = _wndProc,
             hInstance = instance,
-            lpszClassName = _className
+            lpszClassName = TrayWindowClassName
         };
 
         if (NativeMethods.RegisterClassEx(ref windowClass) == 0)
@@ -53,7 +53,7 @@ public sealed class TrayIconService : IDisposable
 
         _messageHwnd = NativeMethods.CreateWindowEx(
             0,
-            _className,
+            TrayWindowClassName,
             "EdgeKit Tray",
             0,
             0,
@@ -85,7 +85,7 @@ public sealed class TrayIconService : IDisposable
         }
 
         var data = CreateNotifyData();
-        data.uFlags = NativeMethods.NIF_MESSAGE | NativeMethods.NIF_ICON | NativeMethods.NIF_TIP;
+        data.uFlags = NativeMethods.NIF_MESSAGE | NativeMethods.NIF_ICON | NativeMethods.NIF_TIP | NativeMethods.NIF_GUID;
         data.hIcon = _iconHandle;
         data.szTip = "EdgeKit";
 
@@ -104,7 +104,8 @@ public sealed class TrayIconService : IDisposable
             uCallbackMessage = TrayCallbackMessage,
             szTip = string.Empty,
             szInfo = string.Empty,
-            szInfoTitle = string.Empty
+            szInfoTitle = string.Empty,
+            guidItem = TrayIconGuid
         };
 
     private nint WndProc(nint hwnd, uint msg, nint wParam, nint lParam)
@@ -141,6 +142,7 @@ public sealed class TrayIconService : IDisposable
         _disposed = true;
 
         var data = CreateNotifyData();
+        data.uFlags = NativeMethods.NIF_GUID;
         NativeMethods.Shell_NotifyIcon(NativeMethods.NIM_DELETE, ref data);
 
         if (_iconHandle != nint.Zero)

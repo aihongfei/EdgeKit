@@ -27,6 +27,13 @@ public sealed class SettingsService : ISettingsService
         set => SetField(ref _drawerWidth, value);
     }
 
+    private bool _edgeTriggerEnabled = true;
+    public bool EdgeTriggerEnabled
+    {
+        get => _edgeTriggerEnabled;
+        set => SetField(ref _edgeTriggerEnabled, value);
+    }
+
     private EdgeTriggerSides _triggerSides = EdgeTriggerSides.Left;
     public EdgeTriggerSides TriggerSides
     {
@@ -333,6 +340,7 @@ public sealed class SettingsService : ISettingsService
         var values = _store.LoadAll();
 
         _drawerWidth = GetInt(values, nameof(DrawerWidth), _drawerWidth);
+        _edgeTriggerEnabled = GetBool(values, nameof(EdgeTriggerEnabled), _edgeTriggerEnabled);
         _triggerSides = NormalizeTriggerSides(GetEnum(values, nameof(TriggerSides), _triggerSides));
         _edgeHandleWidth = ClampEdgeHandleWidth(GetInt(values, nameof(EdgeHandleWidth), _edgeHandleWidth));
         _edgeHandleHeight = ClampEdgeHandleHeight(GetInt(values, nameof(EdgeHandleHeight), _edgeHandleHeight));
@@ -391,6 +399,7 @@ public sealed class SettingsService : ISettingsService
     public void Save()
     {
         _store.Set(nameof(DrawerWidth), _drawerWidth.ToString(CultureInfo.InvariantCulture));
+        _store.Set(nameof(EdgeTriggerEnabled), _edgeTriggerEnabled ? "1" : "0");
         _store.Set(nameof(TriggerSides), _triggerSides.ToString());
         _store.Set(nameof(EdgeHandleWidth), _edgeHandleWidth.ToString(CultureInfo.InvariantCulture));
         _store.Set(nameof(EdgeHandleHeight), _edgeHandleHeight.ToString(CultureInfo.InvariantCulture));

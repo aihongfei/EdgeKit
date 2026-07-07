@@ -44,16 +44,20 @@ public sealed class EdgeTriggerMonitor : IDisposable
     public void Stop()
     {
         _timer.Stop();
-        _handleOverlay.Hide();
-        _outsideSinceTicks = null;
+        HideHandleAndReset();
     }
 
     private void OnTick(DispatcherQueueTimer sender, object args)
     {
+        if (!_settings.EdgeTriggerEnabled)
+        {
+            HideHandleAndReset();
+            return;
+        }
+
         if (_isDrawerVisible?.Invoke() == true)
         {
-            _handleOverlay.Hide();
-            _outsideSinceTicks = null;
+            HideHandleAndReset();
             return;
         }
 
@@ -71,6 +75,11 @@ public sealed class EdgeTriggerMonitor : IDisposable
 
     private void TryShowHandle(int cursorX, int cursorY, NativeMethods.RECT work)
     {
+        if (!_settings.EdgeTriggerEnabled)
+        {
+            return;
+        }
+
         if (_settings.DisableInFullscreen && ScreenInterop.IsForegroundWindowFullscreen())
         {
             return;
@@ -135,6 +144,11 @@ public sealed class EdgeTriggerMonitor : IDisposable
 
     private bool TrySwitchVisibleHandleSide(int cursorX, int cursorY, NativeMethods.RECT work)
     {
+        if (!_settings.EdgeTriggerEnabled)
+        {
+            return false;
+        }
+
         if (cursorY < work.Top || cursorY >= work.Bottom)
         {
             return false;
@@ -166,8 +180,20 @@ public sealed class EdgeTriggerMonitor : IDisposable
 
     private void OnHandleClicked(object? sender, EdgeHandleClickedEventArgs e)
     {
+        if (!_settings.EdgeTriggerEnabled)
+        {
+            HideHandleAndReset();
+            return;
+        }
+
         _outsideSinceTicks = null;
         HandleClicked?.Invoke(this, e);
+    }
+
+    private void HideHandleAndReset()
+    {
+        _handleOverlay.Hide();
+        _outsideSinceTicks = null;
     }
 
     public void Dispose()

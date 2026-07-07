@@ -19,6 +19,12 @@ internal sealed class AcrylicBackdropController
 
     /// <summary>把 Acrylic 背景附加到指定窗口。系统不支持时静默跳过。</summary>
     public void Attach(Window window)
+        => Attach(window, Color.FromArgb(255, 32, 32, 36), 0.55f, 0.55f);
+
+    /// <summary>
+    /// 附加 Acrylic 背景并指定染色与不透明度。浮层类窗口可用更轻的染色获得更通透的毛玻璃观感。
+    /// </summary>
+    public void Attach(Window window, Color tint, float luminosityOpacity, float tintOpacity)
     {
         if (!DesktopAcrylicController.IsSupported())
         {
@@ -36,10 +42,10 @@ internal sealed class AcrylicBackdropController
 
         _acrylicController = new DesktopAcrylicController
         {
-            TintColor = Color.FromArgb(255, 32, 32, 36),
-            LuminosityOpacity = 0.55f,
-            TintOpacity = 0.55f,
-            FallbackColor = Color.FromArgb(255, 32, 32, 36)
+            TintColor = tint,
+            LuminosityOpacity = luminosityOpacity,
+            TintOpacity = tintOpacity,
+            FallbackColor = tint
         };
 
         _acrylicController.SetSystemBackdropConfiguration(_backdropConfig);

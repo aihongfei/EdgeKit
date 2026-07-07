@@ -89,6 +89,7 @@ public sealed partial class SettingsPage : Page
         StartupLaunchSwitch.IsOn = _startupLaunch.GetStatus().IsEnabled;
         UseEverythingSearchSwitch.IsOn = _settings.UseEverythingSearch;
         MenuExpandedSwitch.IsOn = _settings.MenuExpanded;
+        EdgeTriggerEnabledSwitch.IsOn = _settings.EdgeTriggerEnabled;
         SelectTriggerSides(_settings.TriggerSides);
         EdgeHandleWidthBox.Value = _settings.EdgeHandleWidth;
         EdgeHandleHeightBox.Maximum = GetMaxEdgeHandleHeight();
@@ -120,6 +121,7 @@ public sealed partial class SettingsPage : Page
             ? "未配置 Syncfusion License Key，启动时会显示试用提示"
             : "已配置 Syncfusion License Key " + _settings.SyncfusionLicenseKeyPreview;
 
+        ApplyEdgeTriggerEnabledState();
         _loading = false;
     }
 
@@ -238,6 +240,27 @@ public sealed partial class SettingsPage : Page
     {
         var scale = XamlRoot?.RasterizationScale ?? 0;
         return scale > 0 ? scale : 1.0;
+    }
+
+    private void OnEdgeTriggerEnabledToggled(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        if (_loading || _settings is null)
+        {
+            return;
+        }
+
+        _settings.EdgeTriggerEnabled = EdgeTriggerEnabledSwitch.IsOn;
+        ApplyEdgeTriggerEnabledState();
+        _settings.Save();
+    }
+
+    private void ApplyEdgeTriggerEnabledState()
+    {
+        var enabled = EdgeTriggerEnabledSwitch.IsOn;
+        TriggerSidesBox.IsEnabled = enabled;
+        EdgeHandleWidthBox.IsEnabled = enabled;
+        EdgeHandleHeightBox.IsEnabled = enabled;
+        DisableInFullscreenSwitch.IsEnabled = enabled;
     }
 
     private void OnTriggerSidesChanged(object sender, SelectionChangedEventArgs e)

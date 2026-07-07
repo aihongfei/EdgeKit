@@ -28,6 +28,9 @@ public interface ISettingsService
     /// <summary>抽屉宽度（像素）。</summary>
     int DrawerWidth { get; set; }
 
+    /// <summary>是否启用鼠标侧边触发抽屉。</summary>
+    bool EdgeTriggerEnabled { get; set; }
+
     /// <summary>允许显示边缘呼出长条的屏幕边缘。</summary>
     EdgeTriggerSides TriggerSides { get; set; }
 

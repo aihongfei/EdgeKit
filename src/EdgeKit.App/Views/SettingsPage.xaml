@@ -121,6 +121,22 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                    <TextBlock Text="侧边触发" Foreground="{ThemeResource EdgeTextBrush}" />
+                    <TextBlock Text="开启后，鼠标滑到已选择的屏幕边缘（默认左侧）时显示呼出长条；关闭后不影响全局快捷键。"
+                               FontSize="12" Foreground="{ThemeResource EdgeMutedBrush}"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+                <ToggleSwitch x:Name="EdgeTriggerEnabledSwitch" Grid.Column="1"
+                              VerticalAlignment="Center"
+                              Toggled="OnEdgeTriggerEnabledToggled" />
+            </Grid>
+
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" VerticalAlignment="Center">
                     <TextBlock Text="触发边缘" Foreground="{ThemeResource EdgeTextBrush}" />
                     <TextBlock Text="光标触碰选定屏幕边缘时显示呼出长条"
                                FontSize="12" Foreground="{ThemeResource EdgeMutedBrush}"
