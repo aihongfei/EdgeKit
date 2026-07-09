@@ -10,40 +10,111 @@
 
     <Grid x:Name="RootGrid"
           RequestedTheme="Dark"
-          Background="Transparent">
+          Background="{ThemeResource EdgeBackdropBrush}">
+        <Grid.Resources>
+            <SolidColorBrush x:Key="StickyNoteLineBrush" Color="#18FFFFFF" />
+            <SolidColorBrush x:Key="StickyNoteButtonBrush" Color="#241B1D21" />
+            <SolidColorBrush x:Key="StickyNoteButtonHoverBrush" Color="#4A2B3036" />
+            <SolidColorBrush x:Key="StickyNoteButtonPressedBrush" Color="#66383E46" />
+            <SolidColorBrush x:Key="StickyNoteChromeBrush" Color="#820E1012" />
+            <SolidColorBrush x:Key="StickyNoteContentBrush" Color="#3417191D" />
+        </Grid.Resources>
+
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
+        <Border x:Name="WindowChrome"
+                Grid.RowSpan="2"
+                Background="{StaticResource StickyNoteChromeBrush}"
+                BorderBrush="{StaticResource StickyNoteLineBrush}"
+                BorderThickness="0"
+                CornerRadius="{StaticResource EdgeRadiusLg}" />
+
         <!-- 标题栏 / 工具条：同时作为自定义拖拽区 -->
         <Grid x:Name="TitleBarHost"
               Grid.Row="0"
-              Height="36"
-              Padding="8,0"
+              Height="38"
+              Padding="10,0,8,0"
               Background="Transparent">
-            <StackPanel HorizontalAlignment="Right"
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Grid.Column="0"
+                        Orientation="Horizontal"
+                        Spacing="7"
+                        VerticalAlignment="Center">
+                <Border Width="22"
+                        Height="22"
+                        CornerRadius="{StaticResource EdgeRadiusSm}"
+                        Background="{ThemeResource EdgeControlBrush}"
+                        BorderBrush="{StaticResource StickyNoteLineBrush}"
+                        BorderThickness="1">
+                    <FontIcon FontSize="12"
+                              Glyph="&#xE70B;"
+                              Foreground="{ThemeResource EdgeAccentBrush}" />
+                </Border>
+                <TextBlock Text="便签"
+                           FontSize="12"
+                           Foreground="{ThemeResource EdgeMutedBrush}"
+                           VerticalAlignment="Center" />
+            </StackPanel>
+
+            <StackPanel Grid.Column="1"
+                        HorizontalAlignment="Right"
                         Orientation="Horizontal"
                         Spacing="4"
                         VerticalAlignment="Center">
                 <ToggleButton x:Name="TopmostToggle"
-                              Width="28" Height="28"
-                              Padding="0" BorderThickness="0"
-                              Background="Transparent"
+                              Width="28"
+                              Height="28"
+                              MinWidth="0"
+                              Padding="0"
+                              BorderThickness="1"
+                              BorderBrush="{StaticResource StickyNoteLineBrush}"
+                              Background="{StaticResource StickyNoteButtonBrush}"
                               ToolTipService.ToolTip="置顶"
                               Checked="OnTopmostChecked"
                               Unchecked="OnTopmostUnchecked">
-                    <FontIcon FontSize="14"
-                              Glyph="&#xE840;"
+                    <ToggleButton.Resources>
+                        <StaticResource x:Key="ToggleButtonBackground" ResourceKey="StickyNoteButtonBrush" />
+                        <StaticResource x:Key="ToggleButtonBackgroundPointerOver" ResourceKey="StickyNoteButtonHoverBrush" />
+                        <StaticResource x:Key="ToggleButtonBackgroundPressed" ResourceKey="StickyNoteButtonPressedBrush" />
+                        <StaticResource x:Key="ToggleButtonBackgroundChecked" ResourceKey="StickyNoteButtonBrush" />
+                        <StaticResource x:Key="ToggleButtonBackgroundCheckedPointerOver" ResourceKey="StickyNoteButtonHoverBrush" />
+                        <StaticResource x:Key="ToggleButtonBackgroundCheckedPressed" ResourceKey="StickyNoteButtonPressedBrush" />
+                        <StaticResource x:Key="ToggleButtonBorderBrush" ResourceKey="StickyNoteLineBrush" />
+                        <StaticResource x:Key="ToggleButtonBorderBrushChecked" ResourceKey="StickyNoteLineBrush" />
+                        <StaticResource x:Key="ToggleButtonForeground" ResourceKey="EdgeTextBrush" />
+                        <StaticResource x:Key="ToggleButtonForegroundChecked" ResourceKey="EdgeAccentBrush" />
+                    </ToggleButton.Resources>
+                    <FontIcon x:Name="TopmostIcon"
+                              FontSize="14"
+                              Glyph="&#xE718;"
                               Foreground="{ThemeResource EdgeTextBrush}" />
                 </ToggleButton>
 
                 <Button x:Name="CloseButton"
-                        Width="28" Height="28"
-                        Padding="0" BorderThickness="0"
-                        Background="Transparent"
+                        Width="28"
+                        Height="28"
+                        MinWidth="0"
+                        Padding="0"
+                        BorderThickness="1"
+                        BorderBrush="{StaticResource StickyNoteLineBrush}"
+                        Background="{StaticResource StickyNoteButtonBrush}"
                         ToolTipService.ToolTip="关闭"
                         Click="OnCloseClick">
+                    <Button.Resources>
+                        <StaticResource x:Key="ButtonBackground" ResourceKey="StickyNoteButtonBrush" />
+                        <StaticResource x:Key="ButtonBackgroundPointerOver" ResourceKey="StickyNoteButtonHoverBrush" />
+                        <StaticResource x:Key="ButtonBackgroundPressed" ResourceKey="StickyNoteButtonPressedBrush" />
+                        <StaticResource x:Key="ButtonBorderBrush" ResourceKey="StickyNoteLineBrush" />
+                        <StaticResource x:Key="ButtonBorderBrushPointerOver" ResourceKey="EdgeLineBrush" />
+                        <StaticResource x:Key="ButtonBorderBrushPressed" ResourceKey="EdgeLineStrongBrush" />
+                    </Button.Resources>
                     <FontIcon FontSize="14"
                               Glyph="&#xE711;"
                               Foreground="{ThemeResource EdgeTextBrush}" />
@@ -61,13 +132,16 @@
                       VerticalScrollBarVisibility="Visible"
                       VerticalScrollMode="Enabled">
             <TextBox x:Name="ContentBox"
-                     Padding="10,4,10,10"
+                     Margin="8,0,8,8"
+                     Padding="10,8,10,10"
                      AcceptsReturn="True"
                      TextWrapping="Wrap"
                      HorizontalAlignment="Stretch"
                      VerticalAlignment="Top"
-                     Background="Transparent"
+                     Background="{StaticResource StickyNoteContentBrush}"
+                     BorderBrush="Transparent"
                      BorderThickness="0"
+                     CornerRadius="{StaticResource EdgeRadiusMd}"
                      FontSize="14"
                      Foreground="{ThemeResource EdgeTextBrush}"
                      PlaceholderText="写点什么..."
@@ -76,7 +150,18 @@
                      ScrollViewer.HorizontalScrollMode="Disabled"
                      ScrollViewer.VerticalScrollBarVisibility="Disabled"
                      ScrollViewer.VerticalScrollMode="Disabled"
-                     ScrollViewer.BringIntoViewOnFocusChange="False" />
+                     ScrollViewer.BringIntoViewOnFocusChange="False">
+                <TextBox.Resources>
+                    <SolidColorBrush x:Key="TextControlBackground" Color="Transparent" />
+                    <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="Transparent" />
+                    <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="Transparent" />
+                    <SolidColorBrush x:Key="TextControlBorderBrush" Color="Transparent" />
+                    <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="Transparent" />
+                    <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="Transparent" />
+                    <Thickness x:Key="TextControlBorderThemeThickness">0</Thickness>
+                    <Thickness x:Key="TextControlBorderThemeThicknessFocused">0</Thickness>
+                </TextBox.Resources>
+            </TextBox>
         </ScrollViewer>
     </Grid>
 </Window>

@@ -11,12 +11,8 @@
     mc:Ignorable="d">
 
     <Page.Resources>
-        <Style x:Key="PanelBorderStyle" TargetType="Border">
-            <Setter Property="CornerRadius" Value="8" />
-            <Setter Property="Padding" Value="12" />
-            <Setter Property="Background" Value="{ThemeResource EdgePanelBrush}" />
-            <Setter Property="BorderBrush" Value="{ThemeResource EdgeLineBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
+        <Style x:Key="PanelBorderStyle" TargetType="Border" BasedOn="{StaticResource EdgeCardBorderStyle}">
+            <Setter Property="Background" Value="{ThemeResource EdgeCardBrush}" />
         </Style>
 
         <Style x:Key="EditorHostBorderStyle" TargetType="Border">
@@ -37,24 +33,18 @@
 
         <Style x:Key="EditorLoadingOverlayStyle" TargetType="Border">
             <Setter Property="CornerRadius" Value="6" />
-            <Setter Property="Background" Value="#CC15181D" />
+            <Setter Property="Background" Value="{ThemeResource EdgeBackdropBrush}" />
             <Setter Property="Visibility" Value="Collapsed" />
         </Style>
 
-        <Style x:Key="ToolButtonStyle" TargetType="Button">
-            <Setter Property="MinHeight" Value="34" />
+        <Style x:Key="ToolButtonStyle" TargetType="Button" BasedOn="{StaticResource EdgeToolButtonStyle}">
             <Setter Property="MinWidth" Value="72" />
-            <Setter Property="Padding" Value="10,5" />
-            <Setter Property="Background" Value="{ThemeResource EdgeControlBrush}" />
-            <Setter Property="BorderBrush" Value="{ThemeResource EdgeLineBrush}" />
         </Style>
 
-        <Style x:Key="IconButtonStyle" TargetType="Button">
+        <Style x:Key="IconButtonStyle" TargetType="Button" BasedOn="{StaticResource EdgeToolButtonStyle}">
             <Setter Property="Width" Value="36" />
             <Setter Property="Height" Value="34" />
             <Setter Property="Padding" Value="0" />
-            <Setter Property="Background" Value="{ThemeResource EdgeControlBrush}" />
-            <Setter Property="BorderBrush" Value="{ThemeResource EdgeLineBrush}" />
         </Style>
     </Page.Resources>
 

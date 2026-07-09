@@ -131,6 +131,9 @@ public sealed partial class ClipboardHistoryPage : Page
             Content = label,
             Tag = groupId,
             Margin = new Thickness(0),
+            MinHeight = 32,
+            Padding = new Thickness(10, 4, 10, 4),
+            CornerRadius = new CornerRadius(7),
             Background = isSelected
                 ? (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["EdgeAccentSoftBrush"]
                 : (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["EdgeControlBrush"],
@@ -349,7 +352,7 @@ public sealed partial class ClipboardHistoryPage : Page
         var name = await PromptGroupNameAsync("新建分组", string.Empty);
         if (!string.IsNullOrWhiteSpace(name))
         {
-            _viewModel?.AddGroup(name.Trim(), "#4C8DFF");
+            _viewModel?.AddGroup(name.Trim(), "#78B7FF");
         }
     }
 
@@ -468,7 +471,7 @@ public sealed partial class ClipboardHistoryPage : Page
             return;
         }
 
-        var id = _viewModel.AddGroup(name.Trim(), "#4C8DFF");
+        var id = _viewModel.AddGroup(name.Trim(), "#78B7FF");
         _viewModel.MoveToGroup(item, id);
     }
 

@@ -37,7 +37,7 @@ public sealed partial class TrayMenuWindow : Window
         RootGrid.Loaded += OnWindowLoaded;
 
         _backdrop.Attach(this);
-        _backdrop.SetTintColor(Color.FromArgb(255, 26, 26, 26));
+        _backdrop.SetTintColor(Color.FromArgb(255, 8, 9, 10));
     }
 
     private void ConfigureWindow()

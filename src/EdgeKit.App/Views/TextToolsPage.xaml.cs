@@ -29,10 +29,10 @@ public sealed partial class TextToolsPage : Page
         Encoding
     }
 
-    private readonly SolidColorBrush _activeTabBackground = new(Color.FromArgb(255, 49, 58, 70));
-    private readonly SolidColorBrush _inactiveTabBackground = new(Color.FromArgb(255, 27, 31, 38));
-    private readonly SolidColorBrush _activeTabBorder = new(Color.FromArgb(255, 104, 147, 205));
-    private readonly SolidColorBrush _inactiveTabBorder = new(Color.FromArgb(255, 55, 62, 72));
+    private readonly SolidColorBrush _activeTabBackground = new(Color.FromArgb(0x2F, 0x5E, 0xA1, 0xFF));
+    private readonly SolidColorBrush _inactiveTabBackground = new(Color.FromArgb(0x65, 0x26, 0x30, 0x3A));
+    private readonly SolidColorBrush _activeTabBorder = new(Color.FromArgb(0xFF, 0x5E, 0xA1, 0xFF));
+    private readonly SolidColorBrush _inactiveTabBorder = new(Color.FromArgb(0x30, 0xFF, 0xFF, 0xFF));
 
     private TextProcessingService? _textTools;
     private TextToolTab _currentTab = TextToolTab.Json;

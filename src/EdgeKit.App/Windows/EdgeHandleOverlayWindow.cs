@@ -261,12 +261,12 @@ public sealed class EdgeHandleOverlayWindow : IDisposable
             var gripHeight = Math.Min(96f, Math.Max(44f, height * 0.18f));
             var gripTop = (height - gripHeight) / 2f;
             var gripWidth = Math.Clamp(width * 0.22f, 3f, 5f);
-            using var gripGlow = new Pen(Color.FromArgb(86, 76, 141, 255), Math.Max(7f, gripWidth + 5f))
+            using var gripGlow = new Pen(Color.FromArgb(86, 94, 161, 255), Math.Max(7f, gripWidth + 5f))
             {
                 StartCap = LineCap.Round,
                 EndCap = LineCap.Round
             };
-            using var grip = new Pen(Color.FromArgb(255, 76, 141, 255), gripWidth)
+            using var grip = new Pen(Color.FromArgb(255, 94, 161, 255), gripWidth)
             {
                 StartCap = LineCap.Round,
                 EndCap = LineCap.Round

@@ -61,7 +61,7 @@
                     Padding="16,0"
                     VerticalAlignment="Center"
                     Background="{ThemeResource EdgeAccentBrush}"
-                    Foreground="White"
+                    Foreground="{ThemeResource AccentButtonForeground}"
                     Click="OnTranslateClick">
                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                     <FontIcon FontSize="14" Glyph="&#xE774;" VerticalAlignment="Center" />
@@ -88,7 +88,7 @@
         <!-- 原文输入 -->
         <Border Grid.Row="2"
                 Height="120"
-                CornerRadius="10"
+                CornerRadius="8"
                 Background="{ThemeResource EdgeControlBrush}"
                 BorderBrush="{ThemeResource EdgeLineBrush}"
                 BorderThickness="1">
@@ -113,8 +113,8 @@
 
             <!-- 有道翻译 -->
             <Border Grid.Column="0"
-                    CornerRadius="12"
-                    Background="{ThemeResource EdgePanelBrush}"
+                    CornerRadius="8"
+                    Background="{ThemeResource EdgeCardBrush}"
                     BorderBrush="{ThemeResource EdgeLineBrush}"
                     BorderThickness="1">
                 <Grid RowSpacing="10" Margin="14">
@@ -184,8 +184,8 @@
 
             <!-- 大模型翻译 -->
             <Border Grid.Column="1"
-                    CornerRadius="12"
-                    Background="{ThemeResource EdgePanelBrush}"
+                    CornerRadius="8"
+                    Background="{ThemeResource EdgeCardBrush}"
                     BorderBrush="{ThemeResource EdgeLineBrush}"
                     BorderThickness="1">
                 <Grid RowSpacing="10" Margin="14">
@@ -261,7 +261,7 @@
                 Margin="0,0,0,8"
                 Padding="12,8"
                 CornerRadius="8"
-                Background="{ThemeResource EdgePanelBrush}"
+                Background="{ThemeResource EdgeCardElevatedBrush}"
                 BorderBrush="{ThemeResource EdgeLineBrush}"
                 BorderThickness="1"
                 IsHitTestVisible="False"

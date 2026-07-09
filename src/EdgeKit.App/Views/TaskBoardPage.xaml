@@ -17,26 +17,18 @@
         <local:TaskCardPriorityToBrushConverter x:Key="PriorityToBrushConverter" />
         <local:TimeBucketToBrushConverter x:Key="TimeBucketToBrushConverter" />
         <local:OverdueToBrushConverter x:Key="OverdueToBrushConverter" />
-<local:TaskCardStatusToBarBrushConverter x:Key="StatusToBarBrushConverter" />
+        <local:TaskCardStatusToBarBrushConverter x:Key="StatusToBarBrushConverter" />
 
-        <SolidColorBrush x:Key="EdgeHoverBrush" Color="#24FFFFFF" />
-        <SolidColorBrush x:Key="EdgeSelectedBrush" Color="#3AFFFFFF" />
+        <StaticResource x:Key="EdgeHoverBrush" ResourceKey="EdgeControlHoverBrush" />
+        <StaticResource x:Key="EdgeSelectedBrush" ResourceKey="EdgeAccentSoftBrush" />
 
-        <Style x:Key="PanelBorderStyle" TargetType="Border">
-            <Setter Property="CornerRadius" Value="14" />
-            <Setter Property="Padding" Value="16" />
-            <Setter Property="Background" Value="{ThemeResource EdgePanelBrush}" />
-            <Setter Property="BorderBrush" Value="{ThemeResource EdgeLineBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
+        <Style x:Key="PanelBorderStyle" TargetType="Border" BasedOn="{StaticResource EdgeCardBorderStyle}">
+            <Setter Property="Padding" Value="12" />
+            <Setter Property="Background" Value="{ThemeResource EdgeCardBrush}" />
         </Style>
 
-        <Style x:Key="ToolButtonStyle" TargetType="Button">
-            <Setter Property="MinHeight" Value="34" />
-            <Setter Property="Padding" Value="12,7" />
-            <Setter Property="Background" Value="{ThemeResource EdgeControlBrush}" />
-            <Setter Property="BorderBrush" Value="{ThemeResource EdgeLineBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="8" />
+        <Style x:Key="ToolButtonStyle" TargetType="Button" BasedOn="{StaticResource EdgeToolButtonStyle}">
+            <Setter Property="Padding" Value="12,6" />
         </Style>
 
         <Style x:Key="FilterTabListViewItemStyle" TargetType="ListViewItem">
@@ -50,7 +42,7 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="ListViewItem">
                         <Border x:Name="OuterBorder"
-                               Padding="14,7"
+                               Padding="12,6"
                                CornerRadius="8"
                                Background="{ThemeResource EdgeControlBrush}"
                                BorderBrush="{ThemeResource EdgeLineBrush}"
@@ -64,7 +56,7 @@
                                     <VisualState x:Name="PointerOver">
                                         <Storyboard>
                                             <ObjectAnimationUsingKeyFrames Storyboard.TargetName="OuterBorder" Storyboard.TargetProperty="Background">
-                                                <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource EdgePanelBrush}" />
+                                                <DiscreteObjectKeyFrame KeyTime="0" Value="{StaticResource EdgeHoverBrush}" />
                                             </ObjectAnimationUsingKeyFrames>
                                         </Storyboard>
                                     </VisualState>
@@ -100,7 +92,7 @@
 
         <Style x:Key="BoardListViewItemStyle" TargetType="ListViewItem">
             <Setter Property="Padding" Value="0" />
-            <Setter Property="Margin" Value="0,0,0,10" />
+            <Setter Property="Margin" Value="0,0,0,8" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="MinHeight" Value="0" />
             <Setter Property="Background" Value="Transparent" />
@@ -108,9 +100,9 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="ListViewItem">
                         <Border x:Name="OuterBorder"
-                               Padding="14,14,16,14"
-                               CornerRadius="14"
-                               Background="{ThemeResource EdgePanelBrush}"
+                               Padding="12,12,14,12"
+                               CornerRadius="8"
+                               Background="{ThemeResource EdgeCardBrush}"
                                BorderBrush="{ThemeResource EdgeLineBrush}"
                                BorderThickness="1">
                             <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
@@ -160,7 +152,7 @@
         </DataTemplate>
 
         <DataTemplate x:Key="TaskCardTemplate" x:DataType="vm:TaskCardViewModel">
-            <Grid ColumnSpacing="14">
+            <Grid ColumnSpacing="12">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="4" />
                     <ColumnDefinition Width="*" />

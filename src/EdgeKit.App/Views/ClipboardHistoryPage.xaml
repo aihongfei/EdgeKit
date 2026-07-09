@@ -15,9 +15,9 @@
     <Page.Resources>
         <!-- 历史卡片模板：左上类型角标，主体为摘要文本或图片缩略图。单击复制，右键弹菜单。 -->
         <DataTemplate x:Key="ClipboardCardTemplate" x:DataType="vm:ClipboardItemViewModel">
-            <Border Height="120" CornerRadius="10" Padding="10"
+            <Border Height="116" CornerRadius="8" Padding="10"
                     HorizontalAlignment="Stretch"
-                    Background="{ThemeResource EdgePanelBrush}"
+                    Background="{ThemeResource EdgeCardBrush}"
                     BorderBrush="{ThemeResource EdgeLineBrush}" BorderThickness="1"
                     RightTapped="OnCardRightTapped">
                 <Border.ContextFlyout>
@@ -97,7 +97,7 @@
         </DataTemplate>
     </Page.Resources>
 
-    <Grid x:Name="PageRoot" Padding="24,16,24,16" RowSpacing="14">
+        <Grid x:Name="PageRoot" Padding="24,16,24,16" RowSpacing="12">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -319,7 +319,7 @@
                 Margin="0,0,0,8"
                 Padding="12,8"
                 CornerRadius="8"
-                Background="{ThemeResource EdgePanelBrush}"
+                Background="{ThemeResource EdgeCardElevatedBrush}"
                 BorderBrush="{ThemeResource EdgeLineBrush}"
                 BorderThickness="1"
                 IsHitTestVisible="False"

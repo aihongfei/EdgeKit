@@ -12,50 +12,42 @@
     mc:Ignorable="d">
 
     <Page.Resources>
-        <Style x:Key="PanelBorderStyle" TargetType="Border">
-            <Setter Property="CornerRadius" Value="10" />
-            <Setter Property="Padding" Value="12" />
-            <Setter Property="Background" Value="{ThemeResource EdgePanelBrush}" />
-            <Setter Property="BorderBrush" Value="{ThemeResource EdgeLineBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
+        <Style x:Key="PanelBorderStyle" TargetType="Border" BasedOn="{StaticResource EdgeCardBorderStyle}">
+            <Setter Property="Background" Value="{ThemeResource EdgeCardBrush}" />
         </Style>
 
-        <Style x:Key="ToolButtonStyle" TargetType="Button">
-            <Setter Property="MinHeight" Value="34" />
-            <Setter Property="Padding" Value="10,5" />
-            <Setter Property="Background" Value="{ThemeResource EdgeControlBrush}" />
-            <Setter Property="BorderBrush" Value="{ThemeResource EdgeLineBrush}" />
+        <Style x:Key="ToolButtonStyle" TargetType="Button" BasedOn="{StaticResource EdgeToolButtonStyle}">
         </Style>
 
-        <!-- ECharts 风格资源色 -->
-        <SolidColorBrush x:Key="CpuColor" Color="#00D4AA" />
-        <SolidColorBrush x:Key="MemoryColor" Color="#FF4D94" />
-        <SolidColorBrush x:Key="DiskColor" Color="#FFAA00" />
-        <SolidColorBrush x:Key="NetworkColor" Color="#00E676" />
+        <StaticResource x:Key="CpuColor" ResourceKey="EdgeCyanBrush" />
+        <StaticResource x:Key="MemoryColor" ResourceKey="EdgePinkBrush" />
+        <StaticResource x:Key="DiskColor" ResourceKey="EdgeWarningBrush" />
+        <StaticResource x:Key="NetworkColor" ResourceKey="EdgeSuccessBrush" />
+        <StaticResource x:Key="NetworkSendColor" ResourceKey="EdgeAccentBrush" />
 
         <LinearGradientBrush x:Key="CpuFillBrush" StartPoint="0,0" EndPoint="0,1">
-            <GradientStop Offset="0" Color="#6600D4AA" />
-            <GradientStop Offset="1" Color="#0000D4AA" />
+            <GradientStop Offset="0" Color="#382DD4BF" />
+            <GradientStop Offset="1" Color="#002DD4BF" />
         </LinearGradientBrush>
         <LinearGradientBrush x:Key="MemoryFillBrush" StartPoint="0,0" EndPoint="0,1">
-            <GradientStop Offset="0" Color="#66FF4D94" />
-            <GradientStop Offset="1" Color="#00FF4D94" />
+            <GradientStop Offset="0" Color="#38FF6FA8" />
+            <GradientStop Offset="1" Color="#00FF6FA8" />
         </LinearGradientBrush>
         <LinearGradientBrush x:Key="DiskFillBrush" StartPoint="0,0" EndPoint="0,1">
-            <GradientStop Offset="0" Color="#66FFAA00" />
-            <GradientStop Offset="1" Color="#00FFAA00" />
+            <GradientStop Offset="0" Color="#38F7C948" />
+            <GradientStop Offset="1" Color="#00F7C948" />
         </LinearGradientBrush>
         <LinearGradientBrush x:Key="NetworkReceiveFillBrush" StartPoint="0,0" EndPoint="0,1">
-            <GradientStop Offset="0" Color="#6600E676" />
-            <GradientStop Offset="1" Color="#0000E676" />
+            <GradientStop Offset="0" Color="#3832D583" />
+            <GradientStop Offset="1" Color="#0032D583" />
         </LinearGradientBrush>
         <LinearGradientBrush x:Key="NetworkSendFillBrush" StartPoint="0,0" EndPoint="0,1">
-            <GradientStop Offset="0" Color="#6600B0FF" />
-            <GradientStop Offset="1" Color="#0000B0FF" />
+            <GradientStop Offset="0" Color="#385EA1FF" />
+            <GradientStop Offset="1" Color="#005EA1FF" />
         </LinearGradientBrush>
 
         <Style x:Key="ResourceValueStyle" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="24" />
+            <Setter Property="FontSize" Value="22" />
             <Setter Property="FontWeight" Value="SemiBold" />
         </Style>
 
@@ -71,7 +63,7 @@
             <Setter Property="MajorGridLineStyle">
                 <Setter.Value>
                     <Style TargetType="Line">
-                        <Setter Property="Stroke" Value="#22FFFFFF" />
+                        <Setter Property="Stroke" Value="{ThemeResource EdgeDividerBrush}" />
                         <Setter Property="StrokeThickness" Value="1" />
                         <Setter Property="StrokeDashArray" Value="4,4" />
                     </Style>
@@ -120,7 +112,7 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <Border Style="{StaticResource PanelBorderStyle}" MinHeight="130">
+            <Border Style="{StaticResource PanelBorderStyle}" MinHeight="124">
                 <StackPanel Spacing="6">
                     <TextBlock Text="CPU" FontSize="13" Foreground="{StaticResource CpuColor}" />
                     <TextBlock x:Name="CpuText" Text="--%" Style="{StaticResource ResourceValueStyle}" Foreground="{StaticResource CpuColor}" />
@@ -128,7 +120,7 @@
                     <ProgressBar x:Name="CpuBar" Minimum="0" Maximum="100" Foreground="{StaticResource CpuColor}" />
                 </StackPanel>
             </Border>
-            <Border Grid.Column="1" Style="{StaticResource PanelBorderStyle}" MinHeight="130">
+            <Border Grid.Column="1" Style="{StaticResource PanelBorderStyle}" MinHeight="124">
                 <StackPanel Spacing="6">
                     <TextBlock Text="内存" FontSize="13" Foreground="{StaticResource MemoryColor}" />
                     <TextBlock x:Name="MemoryText" Text="--%" Style="{StaticResource ResourceValueStyle}" Foreground="{StaticResource MemoryColor}" />
@@ -136,7 +128,7 @@
                     <ProgressBar x:Name="MemoryBar" Minimum="0" Maximum="100" Foreground="{StaticResource MemoryColor}" />
                 </StackPanel>
             </Border>
-            <Border Grid.Column="2" Style="{StaticResource PanelBorderStyle}" MinHeight="130">
+            <Border Grid.Column="2" Style="{StaticResource PanelBorderStyle}" MinHeight="124">
                 <StackPanel Spacing="6">
                     <TextBlock Text="磁盘" FontSize="13" Foreground="{StaticResource DiskColor}" />
                     <TextBlock x:Name="DiskText" Text="--%" Style="{StaticResource ResourceValueStyle}" Foreground="{StaticResource DiskColor}" />
@@ -170,12 +162,12 @@
                     </ItemsControl>
                 </StackPanel>
             </Border>
-            <Border Grid.Column="3" Style="{StaticResource PanelBorderStyle}" MinHeight="130">
+            <Border Grid.Column="3" Style="{StaticResource PanelBorderStyle}" MinHeight="124">
                 <StackPanel Spacing="8">
                     <TextBlock Text="网络" FontSize="13" Foreground="{StaticResource NetworkColor}" />
                   <StackPanel Spacing="1">
-                    <TextBlock Text="上传" FontSize="12" Foreground="#00B0FF" />
-                    <TextBlock x:Name="NetworkSendText" FontSize="16" FontWeight="SemiBold" Foreground="#00B0FF" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="上传" FontSize="12" Foreground="{StaticResource NetworkSendColor}" />
+                    <TextBlock x:Name="NetworkSendText" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource NetworkSendColor}" TextTrimming="CharacterEllipsis" />
                   </StackPanel>
                   <StackPanel Spacing="1">
                     <TextBlock Text="下载" FontSize="12" Foreground="{StaticResource NetworkColor}" />
@@ -192,7 +184,7 @@
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
                 <TextBlock Text="最近 60 秒趋势" FontSize="15" FontWeight="SemiBold" Foreground="{ThemeResource EdgeTextBrush}" />
-                <Border Grid.Row="1" Background="#0CFFFFFF" CornerRadius="8"
+                <Border Grid.Row="1" Background="{ThemeResource EdgeControlBrush}" CornerRadius="8"
                         BorderBrush="{ThemeResource EdgeLineBrush}" BorderThickness="1">
                     <chart:SfCartesianChart x:Name="ResourceChart" Margin="6" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                                             Background="Transparent">
@@ -253,7 +245,7 @@
                                                     YBindingPath="NetworkSendMbps"
                                                     YAxisName="NetworkAxis"
                                                     Fill="{StaticResource NetworkSendFillBrush}"
-                                                    Stroke="#00B0FF"
+                                                    Stroke="{StaticResource NetworkSendColor}"
                                                     StrokeWidth="2"
                                                     EnableTooltip="True" />
                         </chart:SfCartesianChart.Series>

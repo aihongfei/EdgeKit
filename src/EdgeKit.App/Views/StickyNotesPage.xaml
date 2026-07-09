@@ -12,40 +12,83 @@
 
     <Page.Resources>
         <DataTemplate x:Key="StickyNoteItemTemplate" x:DataType="vm:StickyNoteItemViewModel">
-            <Grid Padding="10,8" ColumnSpacing="12">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
+            <Border Style="{StaticResource EdgeCardBorderStyle}"
+                    Margin="0,0,0,8"
+                    Padding="12,10">
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
 
-                <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
-                    <TextBlock Text="{x:Bind PreviewText, Mode=OneTime}"
-                               Foreground="{ThemeResource EdgeTextBrush}"
-                               TextTrimming="CharacterEllipsis"
-                               MaxLines="1" />
-                    <TextBlock Text="{x:Bind Note.UpdatedUtc, Mode=OneTime}"
-                               FontSize="12"
-                               Foreground="{ThemeResource EdgeMutedBrush}"
-                               TextTrimming="CharacterEllipsis"
-                               MaxLines="1" />
-                </StackPanel>
+                    <Border Grid.Column="0"
+                            Width="34"
+                            Height="34"
+                            CornerRadius="{StaticResource EdgeRadiusMd}"
+                            Background="{x:Bind ColorBrush, Mode=OneTime}"
+                            BorderBrush="{ThemeResource EdgeLineBrush}"
+                            BorderThickness="1"
+                            VerticalAlignment="Center">
+                        <FontIcon Glyph="&#xE70B;"
+                                  FontSize="15"
+                                  Foreground="{ThemeResource EdgeTextBrush}" />
+                    </Border>
 
-                <StackPanel Grid.Column="1"
-                             Orientation="Horizontal"
-                             Spacing="6"
-                             VerticalAlignment="Center">
-                    <Button x:Name="ToggleOpenButton"
-                             Content="{x:Bind OpenCloseLabel, Mode=OneTime}"
-                             Height="28"
-                             Padding="8,0"
-                             Click="OnToggleOpenClick" />
+                    <StackPanel Grid.Column="1"
+                                Spacing="3"
+                                VerticalAlignment="Center">
+                        <TextBlock Text="{x:Bind PreviewText, Mode=OneTime}"
+                                   FontSize="14"
+                                   Foreground="{ThemeResource EdgeTextBrush}"
+                                   TextTrimming="CharacterEllipsis"
+                                   MaxLines="1" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Border CornerRadius="{StaticResource EdgeRadiusXs}"
+                                    Padding="6,1"
+                                    Background="{ThemeResource EdgeControlBrush}">
+                                <TextBlock Text="{x:Bind StatusLabel, Mode=OneTime}"
+                                           FontSize="11"
+                                           Foreground="{ThemeResource EdgeAccentBrush}" />
+                            </Border>
+                            <TextBlock Text="{x:Bind UpdatedText, Mode=OneTime}"
+                                       FontSize="12"
+                                       Foreground="{ThemeResource EdgeMutedBrush}"
+                                       TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                    </StackPanel>
 
-                    <Button Content="删除"
-                             Height="28"
-                             Padding="8,0"
-                             Click="OnDeleteClick" />
-                </StackPanel>
-            </Grid>
+                    <StackPanel Grid.Column="2"
+                                Orientation="Horizontal"
+                                Spacing="6"
+                                VerticalAlignment="Center">
+                        <Button x:Name="ToggleOpenButton"
+                                Width="32"
+                                Height="32"
+                                MinWidth="0"
+                                Padding="0"
+                                Style="{StaticResource EdgeToolButtonStyle}"
+                                Click="OnToggleOpenClick"
+                                ToolTipService.ToolTip="{x:Bind OpenCloseLabel, Mode=OneTime}">
+                            <FontIcon Glyph="{x:Bind OpenCloseGlyph, Mode=OneTime}"
+                                      FontSize="14" />
+                        </Button>
+
+                        <Button Width="32"
+                                Height="32"
+                                MinWidth="0"
+                                Padding="0"
+                                Style="{StaticResource EdgeToolButtonStyle}"
+                                BorderBrush="{ThemeResource EdgeDangerBrush}"
+                                Foreground="{ThemeResource EdgeDangerBrush}"
+                                Click="OnDeleteClick"
+                                ToolTipService.ToolTip="删除">
+                            <FontIcon Glyph="&#xE74D;"
+                                      FontSize="14" />
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Border>
         </DataTemplate>
     </Page.Resources>
 
@@ -55,27 +98,36 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <Grid Grid.Row="0" Padding="24,16,24,8">
+        <Grid Grid.Row="0" Padding="24,16,24,10">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
-            <TextBlock Grid.Column="0"
-                       Text="便签"
-                       FontSize="22"
-                       FontWeight="SemiBold"
-                       Foreground="{ThemeResource EdgeTextBrush}" />
+            <StackPanel Grid.Column="0" Spacing="2">
+                <TextBlock Text="便签"
+                           FontSize="22"
+                           FontWeight="SemiBold"
+                           Foreground="{ThemeResource EdgeTextBrush}" />
+                <TextBlock Text="独立桌面便签与快速记录"
+                           FontSize="12"
+                           Foreground="{ThemeResource EdgeMutedBrush}" />
+            </StackPanel>
 
             <Button Grid.Column="1"
-                     Content="新建便签"
+                     Style="{StaticResource EdgeToolButtonStyle}"
                      Height="36"
-                     Click="OnCreateNewClick" />
+                     Click="OnCreateNewClick">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <FontIcon Glyph="&#xE710;" FontSize="14" />
+                    <TextBlock Text="新建便签" />
+                </StackPanel>
+            </Button>
         </Grid>
 
         <ListView x:Name="NotesList"
                   Grid.Row="1"
-                  Padding="24,0,24,24"
+                  Padding="24,0,24,18"
                   SelectionMode="None"
                   IsItemClickEnabled="True"
                   ItemClick="OnNoteItemClick"
@@ -85,20 +137,36 @@
                     <Setter Property="Padding" Value="0" />
                     <Setter Property="MinHeight" Value="0" />
                     <Setter Property="Margin" Value="0" />
-                    <Setter Property="CornerRadius" Value="8" />
+                    <Setter Property="CornerRadius" Value="{StaticResource EdgeRadiusMd}" />
                     <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                     <Setter Property="Background" Value="Transparent" />
+                    <Setter Property="BorderThickness" Value="0" />
                 </Style>
             </ListView.ItemContainerStyle>
         </ListView>
 
-        <TextBlock x:Name="EmptyHint"
-                  Grid.Row="1"
-                  Text="还没有便签，点击右上角新建一个"
-                  FontSize="13"
-                  Foreground="{ThemeResource EdgeMutedBrush}"
-                  HorizontalAlignment="Center"
-                  VerticalAlignment="Center"
-                  Visibility="Collapsed" />
+        <Border x:Name="EmptyHint"
+                Grid.Row="1"
+                Style="{StaticResource EdgeCardBorderStyle}"
+                Width="260"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Visibility="Collapsed">
+            <StackPanel Spacing="8"
+                        HorizontalAlignment="Center">
+                <FontIcon Glyph="&#xE70B;"
+                          FontSize="22"
+                          Foreground="{ThemeResource EdgeAccentBrush}" />
+                <TextBlock Text="还没有便签"
+                           FontSize="14"
+                           FontWeight="SemiBold"
+                           Foreground="{ThemeResource EdgeTextBrush}"
+                           HorizontalAlignment="Center" />
+                <TextBlock Text="点击右上角新建一个"
+                           FontSize="12"
+                           Foreground="{ThemeResource EdgeMutedBrush}"
+                           HorizontalAlignment="Center" />
+            </StackPanel>
+        </Border>
     </Grid>
 </Page>

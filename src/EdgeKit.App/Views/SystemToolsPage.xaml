@@ -12,23 +12,17 @@
     mc:Ignorable="d">
 
     <Page.Resources>
-        <Style x:Key="SectionCardStyle" TargetType="Border">
-            <Setter Property="CornerRadius" Value="8" />
-            <Setter Property="Padding" Value="12" />
-            <Setter Property="Background" Value="{ThemeResource EdgePanelBrush}" />
-            <Setter Property="BorderBrush" Value="{ThemeResource EdgeLineBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
+        <Style x:Key="SectionCardStyle" TargetType="Border" BasedOn="{StaticResource EdgeCardBorderStyle}">
+            <Setter Property="Background" Value="{ThemeResource EdgeCardBrush}" />
         </Style>
 
-        <Style x:Key="ToolTabButtonStyle" TargetType="Button">
+        <Style x:Key="ToolTabButtonStyle" TargetType="Button" BasedOn="{StaticResource EdgeToolButtonStyle}">
             <Setter Property="MinHeight" Value="34" />
             <Setter Property="MinWidth" Value="82" />
             <Setter Property="Padding" Value="12,5" />
-            <Setter Property="Background" Value="{ThemeResource EdgeControlBrush}" />
-            <Setter Property="BorderBrush" Value="{ThemeResource EdgeLineBrush}" />
         </Style>
 
-        <Style x:Key="SmallIconButtonStyle" TargetType="Button">
+        <Style x:Key="SmallIconButtonStyle" TargetType="Button" BasedOn="{StaticResource EdgeToolButtonStyle}">
             <Setter Property="Width" Value="32" />
             <Setter Property="Height" Value="30" />
             <Setter Property="Padding" Value="0" />
@@ -977,7 +971,7 @@
                     Margin="0,0,8,8"
                     Padding="12,8"
                     CornerRadius="8"
-                    Background="{ThemeResource EdgePanelBrush}"
+                    Background="{ThemeResource EdgeCardElevatedBrush}"
                     BorderBrush="{ThemeResource EdgeLineBrush}"
                     BorderThickness="1"
                     IsHitTestVisible="False"

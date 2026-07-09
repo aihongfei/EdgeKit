@@ -14,7 +14,7 @@ public enum AgentTimelineItemKind
 public sealed class AgentTimelineItemViewModel : INotifyPropertyChanged
 {
     private const string WaitingForToolApprovalText = "等待确认工具调用...";
-    private static readonly Brush ToolErrorBrush = new SolidColorBrush(global::Windows.UI.Color.FromArgb(255, 255, 99, 99));
+    private static readonly Brush ToolErrorBrush = new SolidColorBrush(global::Windows.UI.Color.FromArgb(255, 255, 102, 120));
 
     private AgentMessage? _message;
     private AgentToolCall? _toolCall;
@@ -94,7 +94,7 @@ public sealed class AgentTimelineItemViewModel : INotifyPropertyChanged
 
     public HorizontalAlignment BubbleAlignment => IsUser ? HorizontalAlignment.Right : HorizontalAlignment.Left;
 
-    public Brush BubbleBackground => Resource(IsUser ? "EdgeAccentSoftBrush" : "EdgePanelBrush");
+    public Brush BubbleBackground => Resource(IsUser ? "EdgeAccentSoftBrush" : "EdgeCardBrush");
 
     public Brush BubbleBorderBrush => Resource("EdgeLineBrush");
 

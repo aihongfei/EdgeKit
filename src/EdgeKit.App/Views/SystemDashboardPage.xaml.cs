@@ -23,14 +23,14 @@ public sealed partial class SystemDashboardPage : Page
 
     private static readonly string[] DiskChartColors =
     [
-        "#FFAA00",
-        "#FFCC00",
-        "#FFDD44",
-        "#FFEE88",
-        "#FFC107",
-        "#FFB300",
-        "#FFA000",
-        "#FF8F00"
+        "#F7C948",
+        "#D6A73A",
+        "#B8892D",
+        "#8BD3FF",
+        "#2DD4BF",
+        "#A78BFA",
+        "#FF6FA8",
+        "#32D583"
     ];
 
     public SystemDashboardPage()
@@ -189,7 +189,7 @@ public sealed partial class SystemDashboardPage : Page
             fillBrush.GradientStops.Add(new GradientStop
             {
                 Offset = 0,
-                Color = Color.FromArgb(0x66, color.R, color.G, color.B)
+                Color = Color.FromArgb(0x38, color.R, color.G, color.B)
             });
             fillBrush.GradientStops.Add(new GradientStop
             {

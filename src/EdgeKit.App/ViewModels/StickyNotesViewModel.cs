@@ -1,6 +1,8 @@
 using System.Collections.ObjectModel;
 using EdgeKit.App.Notes;
 using EdgeKit.Core.Notes;
+using Microsoft.UI.Xaml.Media;
+using Windows.UI;
 
 namespace EdgeKit.App.ViewModels;
 
@@ -73,11 +75,23 @@ public sealed class StickyNoteItemViewModel
     /// <summary>列表中显示的内容预览。</summary>
     public string PreviewText => string.IsNullOrWhiteSpace(Note.Content) ? "（空白便签）" : Note.Content;
 
+    /// <summary>更新时间的紧凑展示。</summary>
+    public string UpdatedText => Note.UpdatedUtc.ToLocalTime().ToString("MM-dd HH:mm");
+
     /// <summary>该便签当前是否已打开独立窗口。</summary>
     public bool IsOpen => _manager.IsOpen(Note.Id);
 
+    /// <summary>当前打开状态标签。</summary>
+    public string StatusLabel => IsOpen ? "已打开" : "已收起";
+
     /// <summary>打开/关闭按钮文案。</summary>
     public string OpenCloseLabel => IsOpen ? "关闭" : "打开";
+
+    /// <summary>打开/关闭按钮图标。</summary>
+    public string OpenCloseGlyph => IsOpen ? "\uE711" : "\uE8A7";
+
+    /// <summary>便签颜色在 Dense Glass 卡片中的色块。</summary>
+    public SolidColorBrush ColorBrush => new(ParseColor(Note.ColorHex));
 
     /// <summary>打开/关闭独立窗口。
     /// </summary>
@@ -108,5 +122,33 @@ public sealed class StickyNoteItemViewModel
     public void RefreshNote(StickyNote note)
     {
         Note = note;
+    }
+
+    private static Color ParseColor(string hex)
+    {
+        var span = hex.AsSpan();
+        if (span.Length > 0 && span[0] == '#')
+        {
+            span = span[1..];
+        }
+
+        if (span.Length == 8
+            && byte.TryParse(span[..2], System.Globalization.NumberStyles.HexNumber, null, out var a)
+            && byte.TryParse(span[2..4], System.Globalization.NumberStyles.HexNumber, null, out var r)
+            && byte.TryParse(span[4..6], System.Globalization.NumberStyles.HexNumber, null, out var g)
+            && byte.TryParse(span[6..8], System.Globalization.NumberStyles.HexNumber, null, out var b))
+        {
+            return Color.FromArgb((byte)Math.Max((int)a, 190), r, g, b);
+        }
+
+        if (span.Length == 6
+            && byte.TryParse(span[..2], System.Globalization.NumberStyles.HexNumber, null, out var rr)
+            && byte.TryParse(span[2..4], System.Globalization.NumberStyles.HexNumber, null, out var gg)
+            && byte.TryParse(span[4..6], System.Globalization.NumberStyles.HexNumber, null, out var bb))
+        {
+            return Color.FromArgb(220, rr, gg, bb);
+        }
+
+        return Color.FromArgb(220, 26, 36, 45);
     }
 }

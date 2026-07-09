@@ -115,8 +115,8 @@
                         ToolTipService.ToolTip="上下文信息"
                         Click="OnContextStatusClick">
                     <Button.Resources>
-                        <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#14FFFFFF" />
-                        <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#22FFFFFF" />
+                        <StaticResource x:Key="ButtonBackgroundPointerOver" ResourceKey="EdgeControlHoverBrush" />
+                        <StaticResource x:Key="ButtonBackgroundPressed" ResourceKey="EdgeControlPressedBrush" />
                         <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="Transparent" />
                         <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="Transparent" />
                     </Button.Resources>
@@ -124,17 +124,17 @@
                                                 Width="28"
                                                 Height="28"
                                                 RingThickness="3"
-                                                RingBrush="#A78BFA"
-                                                UnfilledRingBrush="#354047"
+                                                RingBrush="{ThemeResource EdgePurpleBrush}"
+                                                UnfilledRingBrush="{ThemeResource EdgeControlBrush}"
                                                 CenterTextSize="8" />
                     <Button.Flyout>
                         <Flyout>
                             <Border Width="320"
                                     Padding="14"
-                                    Background="{ThemeResource EdgePanelBrush}"
+                                    Background="{ThemeResource EdgeCardElevatedBrush}"
                                     BorderBrush="{ThemeResource EdgeLineBrush}"
                                     BorderThickness="1"
-                                    CornerRadius="14">
+                                    CornerRadius="8">
                                 <StackPanel Spacing="14">
                                     <Grid ColumnSpacing="10">
                                         <Grid.ColumnDefinitions>
@@ -159,8 +159,8 @@
                                                                    Width="128"
                                                                    Height="128"
                                                                    RingThickness="12"
-                                                                   RingBrush="#A78BFA"
-                                                                   UnfilledRingBrush="#354047"
+                                                                   RingBrush="{ThemeResource EdgePurpleBrush}"
+                                                                   UnfilledRingBrush="{ThemeResource EdgeControlBrush}"
                                                                    CenterTextSize="24" />
                                         <TextBlock x:Name="ContextFlyoutPercentText"
                                                    FontSize="13"
@@ -177,14 +177,14 @@
                                                 Background="{ThemeResource EdgeControlBrush}"
                                                 BorderBrush="{ThemeResource EdgeLineBrush}"
                                                 BorderThickness="1"
-                                                CornerRadius="10">
+                                                CornerRadius="8">
                                             <StackPanel Spacing="6">
                                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                                     <Border Width="8"
                                                             Height="8"
                                                             CornerRadius="4"
                                                             VerticalAlignment="Center"
-                                                            Background="#A78BFA" />
+                                                            Background="{ThemeResource EdgePurpleBrush}" />
                                                     <TextBlock Text="已用"
                                                                Foreground="{ThemeResource EdgeMutedBrush}" />
                                                 </StackPanel>
@@ -200,14 +200,14 @@
                                                 Background="{ThemeResource EdgeControlBrush}"
                                                 BorderBrush="{ThemeResource EdgeLineBrush}"
                                                 BorderThickness="1"
-                                                CornerRadius="10">
+                                                CornerRadius="8">
                                             <StackPanel Spacing="6">
                                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                                     <Border Width="8"
                                                             Height="8"
                                                             CornerRadius="4"
                                                             VerticalAlignment="Center"
-                                                            Background="#354047" />
+                                                            Background="{ThemeResource EdgeControlBrush}" />
                                                     <TextBlock Text="未用"
                                                                Foreground="{ThemeResource EdgeMutedBrush}" />
                                                 </StackPanel>
@@ -231,7 +231,7 @@
                                                     Height="8"
                                                     CornerRadius="4"
                                                     VerticalAlignment="Center"
-                                                    Background="#9CA3AF" />
+                                                    Background="{ThemeResource EdgeSubtleTextBrush}" />
                                             <TextBlock Grid.Column="1"
                                                        Text="System Prompt"
                                                        TextTrimming="CharacterEllipsis"
@@ -250,7 +250,7 @@
                                                     Height="8"
                                                     CornerRadius="4"
                                                     VerticalAlignment="Center"
-                                                    Background="#A78BFA" />
+                                                    Background="{ThemeResource EdgePurpleBrush}" />
                                             <TextBlock Grid.Column="1"
                                                        Text="Tools"
                                                        TextTrimming="CharacterEllipsis"
@@ -269,7 +269,7 @@
                                                     Height="8"
                                                     CornerRadius="4"
                                                     VerticalAlignment="Center"
-                                                    Background="#F59E0B" />
+                                                    Background="{ThemeResource EdgeWarningBrush}" />
                                             <TextBlock Grid.Column="1"
                                                        Text="Conversation"
                                                        TextTrimming="CharacterEllipsis"
@@ -288,7 +288,7 @@
                                                     Height="8"
                                                     CornerRadius="4"
                                                     VerticalAlignment="Center"
-                                                    Background="#10B981" />
+                                                    Background="{ThemeResource EdgeSuccessBrush}" />
                                             <TextBlock Grid.Column="1"
                                                        Text="Instructions"
                                                        TextTrimming="CharacterEllipsis"
@@ -307,7 +307,7 @@
                                                     Height="8"
                                                     CornerRadius="4"
                                                     VerticalAlignment="Center"
-                                                    Background="#EF4444" />
+                                                    Background="{ThemeResource EdgeDangerBrush}" />
                                             <TextBlock Grid.Column="1"
                                                        Text="Tool Definitions"
                                                        TextTrimming="CharacterEllipsis"
@@ -365,7 +365,7 @@
                                     Background="{Binding BubbleBackground}"
                                     BorderBrush="{Binding BubbleBorderBrush}"
                                     BorderThickness="1"
-                                    CornerRadius="10"
+                                    CornerRadius="8"
                                     Padding="12">
                                 <StackPanel Spacing="6">
                                     <StackPanel Orientation="Horizontal" Spacing="8">
@@ -431,12 +431,12 @@
                                     Background="{ThemeResource EdgeControlBrush}"
                                     BorderBrush="{ThemeResource EdgeLineBrush}"
                                     BorderThickness="1"
-                                    CornerRadius="10">
+                                    CornerRadius="8">
                                 <Expander IsExpanded="{Binding IsExpanded, Mode=TwoWay}"
                                           HorizontalAlignment="Stretch"
                                           HorizontalContentAlignment="Stretch"
                                           Background="Transparent"
-                                          CornerRadius="10"
+                                          CornerRadius="8"
                                           BorderThickness="0"
                                           Padding="10,6,6,6">
                                     <Expander.Header>

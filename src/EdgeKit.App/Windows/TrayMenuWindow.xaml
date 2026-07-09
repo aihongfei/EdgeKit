@@ -17,12 +17,12 @@
                 Padding="6"
                 BorderBrush="{ThemeResource EdgeLineBrush}"
                 BorderThickness="1"
-                CornerRadius="10">
+                CornerRadius="8">
             <Border.Background>
-                <AcrylicBrush FallbackColor="#E61A1A1A"
-                              TintColor="#1A1A1A"
-                              TintLuminosityOpacity="0.85"
-                              TintOpacity="0.75" />
+                <AcrylicBrush FallbackColor="#D808090A"
+                              TintColor="#08090A"
+                              TintLuminosityOpacity="0.76"
+                              TintOpacity="0.68" />
             </Border.Background>
 
             <ItemsControl x:Name="MenuItemsControl">
@@ -41,13 +41,13 @@
                                         HorizontalContentAlignment="Stretch"
                                         Background="Transparent"
                                         BorderThickness="0"
-                                        CornerRadius="8"
+                                        CornerRadius="7"
                                         Click="OnMenuItemClick"
                                         Tag="{Binding Id}">
                                     <Button.Resources>
                                         <SolidColorBrush x:Key="ButtonBackground" Color="Transparent" />
-                                        <StaticResource x:Key="ButtonBackgroundPointerOver" ResourceKey="EdgeControlBrush" />
-                                        <StaticResource x:Key="ButtonBackgroundPressed" ResourceKey="EdgePanelBrush" />
+                                        <StaticResource x:Key="ButtonBackgroundPointerOver" ResourceKey="EdgeControlHoverBrush" />
+                                        <StaticResource x:Key="ButtonBackgroundPressed" ResourceKey="EdgeControlPressedBrush" />
                                         <StaticResource x:Key="ButtonForeground" ResourceKey="EdgeTextBrush" />
                                         <StaticResource x:Key="ButtonForegroundPointerOver" ResourceKey="EdgeTextBrush" />
                                         <StaticResource x:Key="ButtonForegroundPressed" ResourceKey="EdgeTextBrush" />

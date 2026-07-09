@@ -102,8 +102,9 @@ public sealed partial class CommandPalettePage : Page
         {
             Content = label,
             Tag = category,
-            MinHeight = 34,
-            Padding = new Thickness(11, 5, 11, 5),
+            MinHeight = 32,
+            Padding = new Thickness(10, 4, 10, 4),
+            CornerRadius = new CornerRadius(7),
             Background = isSelected
                 ? (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["EdgeAccentSoftBrush"]
                 : (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["EdgeControlBrush"],

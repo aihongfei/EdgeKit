@@ -9,8 +9,22 @@
     RequestedTheme="Dark"
     mc:Ignorable="d">
 
+    <Page.Resources>
+        <Style x:Key="SettingsSectionStyle" TargetType="Border" BasedOn="{StaticResource EdgeCardBorderStyle}">
+            <Setter Property="Background" Value="{ThemeResource EdgeCardBrush}" />
+            <Setter Property="Padding" Value="12" />
+        </Style>
+
+        <Style x:Key="SettingsSectionHeaderStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{ThemeResource EdgeMutedBrush}" />
+            <Setter Property="Margin" Value="0,4,0,0" />
+        </Style>
+    </Page.Resources>
+
     <ScrollViewer Padding="24,16,24,24">
-        <StackPanel Spacing="18" HorizontalAlignment="Stretch">
+        <StackPanel Spacing="12" HorizontalAlignment="Stretch">
 
             <TextBlock Text="设置" FontSize="22" FontWeight="SemiBold"
                        Foreground="{ThemeResource EdgeTextBrush}" />
@@ -20,6 +34,9 @@
                      Severity="Error"
                      IsClosable="True" />
 
+            <TextBlock Text="通用" Style="{StaticResource SettingsSectionHeaderStyle}" />
+            <Border Style="{StaticResource SettingsSectionStyle}">
+                <StackPanel Spacing="12">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
@@ -73,11 +90,14 @@
                               VerticalAlignment="Center"
                               Toggled="OnUseEverythingSearchToggled" />
             </Grid>
+                </StackPanel>
+            </Border>
 
             <!-- 抽屉 -->
-            <TextBlock Text="抽屉" FontSize="14" FontWeight="SemiBold"
-                       Foreground="{ThemeResource EdgeMutedBrush}" Margin="0,4,0,0" />
+            <TextBlock Text="抽屉" Style="{StaticResource SettingsSectionHeaderStyle}" />
 
+            <Border Style="{StaticResource SettingsSectionStyle}">
+                <StackPanel Spacing="12">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
@@ -110,11 +130,14 @@
                               VerticalAlignment="Center"
                               Toggled="OnMenuExpandedToggled" />
             </Grid>
+                </StackPanel>
+            </Border>
 
             <!-- 触发与行为 -->
-            <TextBlock Text="触发与行为" FontSize="14" FontWeight="SemiBold"
-                       Foreground="{ThemeResource EdgeMutedBrush}" Margin="0,4,0,0" />
+            <TextBlock Text="触发与行为" Style="{StaticResource SettingsSectionHeaderStyle}" />
 
+            <Border Style="{StaticResource SettingsSectionStyle}">
+                <StackPanel Spacing="12">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
@@ -234,11 +257,14 @@
                               VerticalAlignment="Center"
                               Toggled="OnDisableInFullscreenToggled" />
             </Grid>
+                </StackPanel>
+            </Border>
 
             <!-- 首页与隐私 -->
-            <TextBlock Text="首页与隐私" FontSize="14" FontWeight="SemiBold"
-                       Foreground="{ThemeResource EdgeMutedBrush}" Margin="0,4,0,0" />
+            <TextBlock Text="首页与隐私" Style="{StaticResource SettingsSectionHeaderStyle}" />
 
+            <Border Style="{StaticResource SettingsSectionStyle}">
+                <StackPanel Spacing="12">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
@@ -359,11 +385,14 @@
                            SpinButtonPlacementMode="Inline"
                            ValueChanged="OnQuickLaunchVisibleRowsChanged" />
             </Grid>
+                </StackPanel>
+            </Border>
 
             <!-- 组件授权 -->
-            <TextBlock Text="组件授权" FontSize="14" FontWeight="SemiBold"
-                       Foreground="{ThemeResource EdgeMutedBrush}" Margin="0,4,0,0" />
+            <TextBlock Text="组件授权" Style="{StaticResource SettingsSectionHeaderStyle}" />
 
+            <Border Style="{StaticResource SettingsSectionStyle}">
+                <StackPanel Spacing="12">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
@@ -384,11 +413,14 @@
                             Click="OnSaveSyncfusionLicenseKeyClick" />
                 </StackPanel>
             </Grid>
+                </StackPanel>
+            </Border>
 
             <!-- 翻译 -->
-            <TextBlock Text="翻译" FontSize="14" FontWeight="SemiBold"
-                       Foreground="{ThemeResource EdgeMutedBrush}" Margin="0,4,0,0" />
+            <TextBlock Text="翻译" Style="{StaticResource SettingsSectionHeaderStyle}" />
 
+            <Border Style="{StaticResource SettingsSectionStyle}">
+                <StackPanel Spacing="12">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
@@ -420,6 +452,13 @@
                              Width="260" Height="36" VerticalAlignment="Center"
                              PasswordChanged="OnYoudaoAppSecretChanged" />
             </Grid>
+                </StackPanel>
+            </Border>
+
+            <TextBlock Text="维护" Style="{StaticResource SettingsSectionHeaderStyle}" />
+
+            <Border Style="{StaticResource SettingsSectionStyle}">
+                <StackPanel Spacing="12">
 
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -436,6 +475,8 @@
                         Height="36" VerticalAlignment="Center"
                         Click="OnClearRecentClick" />
             </Grid>
+                </StackPanel>
+            </Border>
         </StackPanel>
     </ScrollViewer>
 </Page>

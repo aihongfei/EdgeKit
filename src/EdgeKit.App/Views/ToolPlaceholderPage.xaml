@@ -10,11 +10,11 @@
 
     <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"
                 Spacing="14" Padding="24">
-        <Border Width="72" Height="72" CornerRadius="18"
+        <Border Width="64" Height="64" CornerRadius="10"
                 HorizontalAlignment="Center"
                 Background="{ThemeResource EdgeAccentSoftBrush}"
                 BorderBrush="{ThemeResource EdgeAccentBrush}" BorderThickness="1">
-            <FontIcon x:Name="ToolIcon" FontSize="32"
+            <FontIcon x:Name="ToolIcon" FontSize="28"
                       Foreground="{ThemeResource EdgeAccentBrush}"
                       Glyph="&#xE82F;" />
         </Border>

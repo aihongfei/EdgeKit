@@ -210,7 +210,10 @@ public sealed partial class ImageConvertPage : Page
                     if (file is not null)
                     {
                         await LoadSourceAsync(await ReadFileBytesAsync(file), file.Name);
-                        if (_sourceBytes is not null) return;
+                        if (_sourceBytes is not null)
+                        {
+                            return;
+                        }
                     }
                 }
             }
@@ -228,7 +231,10 @@ public sealed partial class ImageConvertPage : Page
                     if (!string.IsNullOrWhiteSpace(text) && File.Exists(text))
                     {
                         await LoadSourceAsync(await File.ReadAllBytesAsync(text), Path.GetFileName(text));
-                        if (_sourceBytes is not null) return;
+                        if (_sourceBytes is not null)
+                        {
+                            return;
+                        }
                     }
                 }
             }

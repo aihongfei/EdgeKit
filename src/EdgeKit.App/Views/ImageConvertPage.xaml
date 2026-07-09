@@ -10,19 +10,11 @@
     mc:Ignorable="d">
 
     <Page.Resources>
-        <Style x:Key="PanelBorderStyle" TargetType="Border">
-            <Setter Property="CornerRadius" Value="8" />
-            <Setter Property="Padding" Value="12" />
-            <Setter Property="Background" Value="{ThemeResource EdgePanelBrush}" />
-            <Setter Property="BorderBrush" Value="{ThemeResource EdgeLineBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
+        <Style x:Key="PanelBorderStyle" TargetType="Border" BasedOn="{StaticResource EdgeCardBorderStyle}">
+            <Setter Property="Background" Value="{ThemeResource EdgeCardBrush}" />
         </Style>
 
-        <Style x:Key="ToolButtonStyle" TargetType="Button">
-            <Setter Property="MinHeight" Value="34" />
-            <Setter Property="Padding" Value="10,5" />
-            <Setter Property="Background" Value="{ThemeResource EdgeControlBrush}" />
-            <Setter Property="BorderBrush" Value="{ThemeResource EdgeLineBrush}" />
+        <Style x:Key="ToolButtonStyle" TargetType="Button" BasedOn="{StaticResource EdgeToolButtonStyle}">
         </Style>
     </Page.Resources>
 

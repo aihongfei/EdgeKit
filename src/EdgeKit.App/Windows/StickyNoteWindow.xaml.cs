@@ -55,9 +55,9 @@ public sealed partial class StickyNoteWindow : Window
         _saveDebounceTimer.Tick += OnSaveDebounceTick;
 
         ApplyNoteToUi();
-        UpdateBackground();
 
-        _backdrop.Attach(this);
+        _backdrop.Attach(this, Color.FromArgb(255, 8, 9, 10), 0.36f, 0.44f);
+        UpdateBackground();
 
         AppWindow.Changed += OnAppWindowChanged;
         Closed += OnWindowClosed;
@@ -110,6 +110,7 @@ public sealed partial class StickyNoteWindow : Window
     {
         ContentBox.Text = _note.Content;
         TopmostToggle.IsChecked = _note.IsTopmost;
+        UpdateTopmostVisual();
     }
 
     private void ApplyPositionAndSize()
@@ -128,9 +129,19 @@ public sealed partial class StickyNoteWindow : Window
     {
         var color = ParseColor(_note.ColorHex);
 
-        // 把便签颜色作为 Acrylic Tint，让窗口背景与桌面融合，呈现半透明黑色系效果。
-        _backdrop.SetTintColor(color);
-        RootGrid.Background = new SolidColorBrush(Colors.Transparent);
+        // 便签保持黑灰毛玻璃主体，便签颜色只作为极弱氛围混入，避免变成蓝绿卡片。
+        _backdrop.SetTintColor(Color.FromArgb(255, 8, 9, 10));
+        RootGrid.Background = new SolidColorBrush(Color.FromArgb(72, 8, 9, 10));
+        WindowChrome.Background = CreateDenseNoteBrush(color);
+    }
+
+    private void UpdateTopmostVisual()
+    {
+        var isTopmost = _note.IsTopmost;
+        TopmostIcon.Glyph = isTopmost ? "\uE77A" : "\uE718";
+        TopmostIcon.Foreground = (Brush)Application.Current.Resources[
+            isTopmost ? "EdgeAccentBrush" : "EdgeTextBrush"];
+        TopmostToggle.SetValue(ToolTipService.ToolTipProperty, isTopmost ? "取消置顶" : "置顶");
     }
 
     private void ConfigureContentMeasurement()
@@ -204,6 +215,18 @@ public sealed partial class StickyNoteWindow : Window
         return Color.FromArgb(255, 26, 26, 30);
     }
 
+    private static SolidColorBrush CreateDenseNoteBrush(Color noteColor)
+    {
+        static byte Blend(byte baseValue, byte accent, double amount)
+            => (byte)Math.Clamp(Math.Round((baseValue * (1 - amount)) + (accent * amount)), 0, 255);
+
+        return new SolidColorBrush(Color.FromArgb(
+            138,
+            Blend(14, noteColor.R, 0.04),
+            Blend(16, noteColor.G, 0.04),
+            Blend(18, noteColor.B, 0.04)));
+    }
+
     private void OnAppWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
     {
         if (_isInitializing || _isSaving)
@@ -273,6 +296,7 @@ public sealed partial class StickyNoteWindow : Window
         }
 
         _note = _note with { IsTopmost = topmost, UpdatedUtc = DateTime.UtcNow };
+        UpdateTopmostVisual();
         SaveDeferred();
     }
 
